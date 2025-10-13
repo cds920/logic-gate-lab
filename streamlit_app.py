@@ -4,21 +4,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 기본 설정
-# ──────────────────────────────────────────────────────────────────────────────
-st.set_page_config(page_title="LogicLab: GateBox", page_icon="🔌", layout="wide")
-
-# 상태 초기화
-if "score" not in st.session_state:
-    st.session_state.score = 0
-if "q_index" not in st.session_state:
-    st.session_state.q_index = 0
-if "wrong" not in st.session_state:
-    st.session_state.wrong = []
+st.set_page_config(page_title="LogicLab: 게이트박스", page_icon="🔌", layout="wide")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 게이트 정의
+# 기본 유틸
 # ──────────────────────────────────────────────────────────────────────────────
 def AND(a, b):  return int(a and b)
 def OR(a, b):   return int(a or b)
@@ -40,16 +29,14 @@ GATE_FUNCS = {
 }
 BASIC_GATES = ["AND", "OR", "NAND", "NOR", "XOR", "XNOR", "NOT(A)", "NOT(B)"]
 
-# 진리표 생성
 def truth_table(gate_name):
     rows = []
-    for a in [0, 1]:
-        for b in [0, 1]:
+    for a in [0,1]:
+        for b in [0,1]:
             y = GATE_FUNCS[gate_name](a, b)
             rows.append({"A": a, "B": b, f"{gate_name}": y})
     return pd.DataFrame(rows)
 
-# 현재 입력행 마킹(▶)
 def mark_current(df, a, b):
     df = df.copy()
     df.insert(0, "▶", ["◻" for _ in range(len(df))])
@@ -57,7 +44,6 @@ def mark_current(df, a, b):
     df.loc[idx, "▶"] = "▶"
     return df
 
-# 스타일: 선택된 (A,B) 행 배경 하이라이트
 def style_truth(df, a_sel, b_sel):
     def _hl(row):
         is_sel = (row["A"] == a_sel) and (row["B"] == b_sel)
@@ -65,47 +51,114 @@ def style_truth(df, a_sel, b_sel):
         return [bg] * len(row)
     return df.style.apply(_hl, axis=1)
 
-# 게이트 다이어그램(Graphviz) 렌더
-def render_gate_graph(gate_label, A_val, B_val, Y_val):
-    y_color = "#22c55e" if Y_val == 1 else "#333333"
-    dot = f"""
-    digraph G {{
-      rankdir=LR;
-      node [shape=circle, fontsize=14, fontname="Arial"];
+# ──────────────────────────────────────────────────────────────────────────────
+# 게이트 SVG (간단 ANSI 아이콘)
+#  - 좌: 두 입력, 가운데: 게이트, 우: 출력 (인버터 버블은 하얀 원)
+# ──────────────────────────────────────────────────────────────────────────────
+def gate_svg(gate_label, A_val, B_val, Y_val, width=640, height=260):
+    # 색상
+    line = "#222"
+    fill = "none"
+    text = "#111"
+    on = "#1f9d55" if Y_val==1 else "#555"
 
-      A [label="A={A_val}"];
-      B [label="B={B_val}"];
+    # 공통 좌표
+    left_x, mid_x, right_x = 90, 280, 520
+    top_y, mid_y, bot_y = 70, 130, 190
 
-      gate [shape=box, style="rounded", label="{gate_label}", fontsize=16];
+    # 게이트 본체 path (게이트별)
+    body = ""
+    bubble = ""   # 인버터 버블
+    if gate_label in ["AND","NAND"]:
+        # D 모양
+        body = f'M {mid_x-60},{top_y} L {mid_x-60},{bot_y} ' \
+               f'L {mid_x},{bot_y} ' \
+               f'A 60,60 0 0,0 {mid_x},{top_y} Z'
+    elif gate_label in ["OR","NOR","XOR","XNOR"]:
+        # OR 곡선 (XOR/XNOR은 앞에 얇은 곡선 추가)
+        pre = ""
+        if gate_label in ["XOR","XNOR"]:
+            pre = f'<path d="M {mid_x-80},{top_y} C {mid_x-110},{mid_y} {mid_x-110},{mid_y} {mid_x-80},{bot_y}" ' \
+                  f'stroke="{line}" fill="none" stroke-width="3"/>'
+        body = pre + \
+            f'<path d="M {mid_x-70},{top_y} C {mid_x-30},{top_y} {mid_x+30},{mid_y-40} {mid_x+30},{mid_y} ' \
+            f'C {mid_x+30},{mid_y+40} {mid_x-30},{bot_y} {mid_x-70},{bot_y} ' \
+            f'C {mid_x-40},{mid_y} {mid_x-40},{mid_y} {mid_x-70},{top_y} Z" ' \
+            f'stroke="{line}" fill="{fill}" stroke-width="3"/>'
+    elif gate_label.startswith("NOT"):
+        # 삼각형
+        body = f'M {mid_x-60},{top_y} L {mid_x-60},{bot_y} L {mid_x+40},{mid_y} Z'
+    else:
+        # 기타(기본은 AND)
+        body = f'M {mid_x-60},{top_y} L {mid_x-60},{bot_y} ' \
+               f'L {mid_x},{bot_y} A 60,60 0 0,0 {mid_x},{top_y} Z'
 
-      A -> gate;
-      B -> gate;
+    # 버블이 필요한 게이트
+    need_bubble = gate_label in ["NAND","NOR","XNOR"] or gate_label.startswith("NOT")
+    bubble = f'<circle cx="{mid_x+44}" cy="{mid_y}" r="9" stroke="{line}" fill="#ffffff" stroke-width="3"/>' if need_bubble else ""
 
-      Y [label="Y={Y_val}", color="{y_color}", fontcolor="{y_color}"];
-      gate -> Y;
+    # 출력선 끝 위치 (버블 여부에 따라 다름)
+    out_start = mid_x+44 if need_bubble else mid_x+30
+    # 텍스트 라벨
+    a_lbl = "A"
+    b_lbl = "B"
+    y_lbl = "Y"
 
-      {{rank=same; A B}}
-    }}
+    svg = f"""
+    <svg width="{width}" height="{height}" viewBox="0 0 {width} {height}"
+         xmlns="http://www.w3.org/2000/svg" style="background-color:white">
+      <defs>
+        <style>
+          .t {{ font-family: 'DejaVu Sans', 'Arial', sans-serif; fill:{text}; font-size:18px; }}
+        </style>
+      </defs>
+
+      <!-- 입력 원/라벨 -->
+      <circle cx="{left_x}" cy="{top_y}" r="28" stroke="{line}" fill="none" stroke-width="3"/>
+      <text x="{left_x-8}" y="{top_y+6}" class="t">{a_lbl}={A_val}</text>
+      <circle cx="{left_x}" cy="{bot_y}" r="28" stroke="{line}" fill="none" stroke-width="3"/>
+      <text x="{left_x-8}" y="{bot_y+6}" class="t">{b_lbl}={B_val}</text>
+
+      <!-- 배선 -->
+      <line x1="{left_x+28}" y1="{top_y}" x2="{mid_x-60}" y2="{top_y}" stroke="{line}" stroke-width="3"/>
+      <line x1="{left_x+28}" y1="{bot_y}" x2="{mid_x-60}" y2="{bot_y}" stroke="{line}" stroke-width="3"/>
+
+      <!-- 게이트 본체 -->
+      <path d="{body.split('"/>')[0].replace('<path d=\"','')}" stroke="{line}" fill="{fill}" stroke-width="3"/>
+
+      <!-- 게이트 라벨(한국어/영문 그대로) -->
+      <text x="{mid_x-22}" y="{mid_y+7}" class="t">{gate_label}</text>
+
+      <!-- 버블(필요 시) -->
+      {bubble}
+
+      <!-- 출력 -->
+      <line x1="{out_start}" y1="{mid_y}" x2="{right_x-28}" y2="{mid_y}" stroke="{line}" stroke-width="3"/>
+      <circle cx="{right_x}" cy="{mid_y}" r="40" stroke="{on}" fill="none" stroke-width="4"/>
+      <text x="{right_x-14}" y="{mid_y+6}" class="t" fill="{on}">{y_lbl}={Y_val}</text>
+    </svg>
     """
-    st.graphviz_chart(dot, use_container_width=True)
+    return svg
+
+def show_gate_svg(gate_label, A_val, B_val, Y_val):
+    svg = gate_svg(gate_label, A_val, B_val, Y_val)
+    st.markdown(svg, unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 사이드바
+# 페이지
 # ──────────────────────────────────────────────────────────────────────────────
-st.sidebar.title("LogicLab: GateBox")
-page = st.sidebar.radio("페이지", ["게이트 뷰어", "타임라인", "2단 합성", "퀴즈", "대시보드"])
+st.sidebar.title("LogicLab: 게이트박스")
+page = st.sidebar.radio("페이지", ["게이트 뷰어", "타임라인(클릭 편집)", "2단 합성"])
 st.sidebar.caption("ⓘ 2학년 도제반 논리회로 도입/실습 확인용")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 1) 게이트 뷰어  (A/B 스위치 = 진리표 바로 옆, 행 하이라이트 + 게이트 그림)
+# 1) 게이트 뷰어
 # ──────────────────────────────────────────────────────────────────────────────
 if page == "게이트 뷰어":
     st.header("🔎 게이트 뷰어 (입력→출력 직관)")
 
-    # 상단: 게이트 선택
     gate = st.selectbox("게이트 선택", BASIC_GATES, index=0, key="viewer_gate")
 
-    # 본문 2열: 왼쪽(입출력/다이어그램), 오른쪽(스위치+진리표)
     left, right = st.columns([1, 1])
 
     with right:
@@ -119,90 +172,107 @@ if page == "게이트 뷰어":
 
         st.subheader("진리표")
         df = truth_table(gate)
-        df_mark = mark_current(df, A_i, B_i)  # ▶ 표시
-        st.dataframe(
-            style_truth(df_mark, A_i, B_i),   # 선택 행 하이라이트
-            use_container_width=True,
-            hide_index=True
-        )
+        df_mark = mark_current(df, A_i, B_i)
+        st.dataframe(style_truth(df_mark, A_i, B_i), use_container_width=True, hide_index=True)
 
     with left:
         st.subheader("입/출력 패널")
         out = GATE_FUNCS[gate](A_i, B_i)
         st.write(f"**A:** `{A_i}`  |  **B:** `{B_i}`")
-        led = "🟢 ON" if out == 1 else "⚫ OFF"
+        led = "🟢 켜짐" if out==1 else "⚫ 꺼짐"
         st.metric(label=f"출력 {gate}", value=f"{out} ({led})")
 
         st.subheader("게이트 다이어그램")
-        render_gate_graph(gate, A_i, B_i, out)
+        show_gate_svg("그리고" if gate=="AND" else
+                      "또는" if gate=="OR" else
+                      "부정(A)" if gate=="NOT(A)" else
+                      "부정(B)" if gate=="NOT(B)" else
+                      gate, A_i, B_i, out)
 
-    st.info("오른쪽에서 A/B를 바꾸면, 진리표가 파란색으로 하이라이트되고 왼쪽 LED·다이어그램이 동시에 반응합니다.")
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 2) 타임라인 (파형 시각화)
-# ──────────────────────────────────────────────────────────────────────────────
-elif page == "타임라인":
-    st.header("🕒 타임라인 (사각파 → 출력 파형)")
-
-    colL, colR = st.columns([1, 1])
-    with colL:
-        gate = st.selectbox("게이트 선택", BASIC_GATES, index=6, key="timeline_gate")
-        n_cycles = st.slider("샘플 길이", 8, 64, 16, step=2)
-        duty_A = st.slider("A 듀티(%)", 0, 100, 50, step=5)
-        duty_B = st.slider("B 듀티(%)", 0, 100, 50, step=5)
-        phase_B = st.slider("B 위상 지연(샘플)", 0, n_cycles-1, 0)
-        st.caption("듀티는 1의 비율, 위상 지연은 B의 시작 위치를 밀어줍니다.")
-
-    # 파형 생성
-    def square_wave(n, duty, phase=0):
-        arr = np.zeros(n, dtype=int)
-        on_len = int(n * (duty/100))
-        start = phase % n
-        arr[start:start+on_len if start+on_len <= n else n] = 1
-        if start+on_len > n:
-            arr[:(start+on_len) % n] = 1
-        return arr
-
-    A_w = square_wave(n_cycles, duty_A, 0)
-    B_w = square_wave(n_cycles, duty_B, phase_B)
-    Y_w = np.array([GATE_FUNCS[gate](int(a), int(b)) for a, b in zip(A_w, B_w)])
-
-    with colR:
-        fig = plt.figure(figsize=(7, 3))
-        t = np.arange(n_cycles)
-        plt.step(t, A_w+2, where="post", label="A +2")
-        plt.step(t, B_w+1, where="post", label="B +1")
-        plt.step(t, Y_w+0, where="post", label=f"Y={gate}")
-        plt.yticks([0,1,2,3], ["0","1","B","A"])
-        plt.xlabel("샘플")
-        plt.ylim(-0.5, 3.5)
-        plt.legend(loc="upper right")
-        plt.grid(True, linestyle="--", alpha=0.3)
-        st.pyplot(fig, use_container_width=True)
-
-    st.success("XOR을 선택하고 B 위상을 살짝 밀어보세요. 두 입력이 다를 때만 출력이 1인 걸 파형으로 직관화할 수 있어요.")
+    st.info("오른쪽에서 A/B를 바꾸면, 진리표 행이 파란색으로 하이라이트되고 왼쪽 LED·다이어그램이 동시에 반응합니다.")
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 3) 2단 합성 (간단 조합논리 빌더)
+# 2) 타임라인(클릭 편집)
+# ──────────────────────────────────────────────────────────────────────────────
+elif page == "타임라인(클릭 편집)":
+    st.header("🕒 타임라인 (칸을 클릭해 0/1 토글)")
+
+    # 설정
+    gate = st.selectbox("게이트 선택", BASIC_GATES, index=4, key="tl_gate")  # 기본 XOR
+    n = st.slider("샘플 길이(칸 수)", 8, 48, 16, step=2)
+
+    # 세션 상태 초기화/리셋
+    if "A_seq" not in st.session_state or len(st.session_state.A_seq)!=n:
+        st.session_state.A_seq = [0]*n
+    if "B_seq" not in st.session_state or len(st.session_state.B_seq)!=n:
+        st.session_state.B_seq = [0]*n
+
+    c_btn1, c_btn2, c_btn3 = st.columns(3)
+    with c_btn1:
+        if st.button("랜덤 채우기"):
+            st.session_state.A_seq = list(np.random.randint(0,2,n))
+            st.session_state.B_seq = list(np.random.randint(0,2,n))
+    with c_btn2:
+        if st.button("모두 0"):
+            st.session_state.A_seq = [0]*n
+            st.session_state.B_seq = [0]*n
+    with c_btn3:
+        if st.button("모두 1(동상)"):
+            st.session_state.A_seq = [1]*n
+            st.session_state.B_seq = [1]*n
+
+    st.markdown("#### A 행을 눌러 0/1 토글")
+    cols = st.columns(n, gap="small")
+    for i, c in enumerate(cols):
+        lab = "●" if st.session_state.A_seq[i]==1 else "○"
+        if c.button(lab, key=f"A_{i}"):
+            st.session_state.A_seq[i] = 1 - st.session_state.A_seq[i]
+
+    st.markdown("#### B 행을 눌러 0/1 토글")
+    cols = st.columns(n, gap="small")
+    for i, c in enumerate(cols):
+        lab = "●" if st.session_state.B_seq[i]==1 else "○"
+        if c.button(lab, key=f"B_{i}"):
+            st.session_state.B_seq[i] = 1 - st.session_state.B_seq[i]
+
+    A_w = np.array(st.session_state.A_seq, dtype=int)
+    B_w = np.array(st.session_state.B_seq, dtype=int)
+    Y_w = np.array([GATE_FUNCS[gate](int(a), int(b)) for a,b in zip(A_w,B_w)])
+
+    # 시각화
+    fig = plt.figure(figsize=(9, 3.2))
+    t = np.arange(n)
+    plt.step(t, A_w+2, where="post", label="A +2")
+    plt.step(t, B_w+1, where="post", label="B +1")
+    plt.step(t, Y_w+0, where="post", label=f"Y={gate}")
+    plt.yticks([0,1,2,3], ["0","1","B","A"])
+    plt.xlabel("샘플")
+    plt.ylim(-0.5, 3.5)
+    plt.legend(loc="upper right")
+    plt.grid(True, linestyle="--", alpha=0.3)
+    st.pyplot(fig, use_container_width=True)
+
+    st.success("팁: XOR을 선택한 뒤 A/B에서 서로 다른 칸을 만들어 보세요. 두 입력이 다를 때만 출력이 1이 됩니다.")
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 3) 2단 합성
 # ──────────────────────────────────────────────────────────────────────────────
 elif page == "2단 합성":
-    st.header("🧱 2단 합성 (G1(A,B) ⊕ G2(A,B))")
+    st.header("🧱 2단 합성 (G1(A,B) → comb → G2(A,B))")
 
-    # 이 페이지는 자체 A/B 토글 사용 (뷰어 페이지와 독립)
-    col_inputs = st.container()
-    with col_inputs:
-        i1, i2 = st.columns(2)
-        with i1:
-            A_local = st.toggle("A", value=False, key="compose_A")
-        with i2:
-            B_local = st.toggle("B", value=False, key="compose_B")
-        A_i, B_i = int(A_local), int(B_local)
+    # 입력 스위치
+    i1, i2 = st.columns(2)
+    with i1:
+        A_local = st.toggle("A", value=False, key="compose_A")
+    with i2:
+        B_local = st.toggle("B", value=False, key="compose_B")
+    A_i, B_i = int(A_local), int(B_local)
 
-    c1, c2, c3 = st.columns([1, 1, 1])
+    c1, c2, c3 = st.columns([1,1,1])
     with c1:
         g1 = st.selectbox("1단 게이트 G1", BASIC_GATES, index=0)
     with c2:
-        comb = st.selectbox("결합 게이트", ["AND", "OR", "XOR", "XNOR", "NAND", "NOR"])
+        comb = st.selectbox("결합 게이트", ["AND","OR","XOR","XNOR","NAND","NOR"])
     with c3:
         g2 = st.selectbox("1단 게이트 G2", BASIC_GATES, index=1)
 
@@ -210,7 +280,7 @@ elif page == "2단 합성":
     G2 = GATE_FUNCS[g2](A_i, B_i)
     Y  = GATE_FUNCS[comb](G1, G2)
 
-    st.write(f"**입력** A={A_i}, B={B_i} →  **G1={g1}→{G1}**, **G2={g2}→{G2}**, **결합={comb}→Y={Y}**")
+    st.write(f"**입력** A={A_i}, B={B_i} → **G1={g1}→{G1}**, **G2={g2}→{G2}**, **결합={comb}→Y={Y}**")
     st.metric("최종 출력 Y", Y)
 
     df_tt = pd.DataFrame(
@@ -220,58 +290,4 @@ elif page == "2단 합성":
     )
     st.dataframe(mark_current(df_tt, A_i, B_i), use_container_width=True, hide_index=True)
 
-    st.info("미션 예시: (A NAND B) OR (NOT A) 구성 후, 어떤 입력 조합에서 1이 되는지 찾아보세요.")
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 4) 퀴즈
-# ──────────────────────────────────────────────────────────────────────────────
-elif page == "퀴즈":
-    st.header("📝 개념 확인 퀴즈")
-
-    questions = [
-        {"type":"OX","q":"NAND만으로 모든 기본 게이트(AND/OR/NOT 등)를 만들 수 있다.","ans":"O","exp":"NAND는 기능적으로 완전(Functional completeness)합니다."},
-        {"type":"MC","q":"다음과 동치인 게이트는?  ¬(A · B)","choices":["NOR","XOR","NAND","XNOR"],"ans":"NAND","exp":"¬(A·B)는 NAND의 정의와 동일합니다."},
-        {"type":"MC","q":"XOR 출력이 1이 되는 경우는?","choices":["A=B","A≠B","항상 0","항상 1"],"ans":"A≠B","exp":"XOR은 두 입력이 다를 때 1입니다."},
-        {"type":"MC","q":"NOR 게이트의 진리표에서 1이 되는 경우는?","choices":["A=0,B=0","A=1,B=0","A=0,B=1","A=1,B=1"],"ans":"A=0,B=0","exp":"NOR은 OR의 부정이므로 두 입력이 모두 0일 때만 1입니다."},
-        {"type":"MC","q":"XNOR의 의미와 가장 가까운 것은?","choices":["동치","합","곱","부정"],"ans":"동치","exp":"XNOR은 A와 B가 같을 때 1 → 논리적 동치입니다."},
-    ]
-
-    q = questions[st.session_state.q_index % len(questions)]
-    st.subheader(f"Q{st.session_state.q_index % len(questions) + 1}. {q['q']}")
-
-    if q["type"] == "OX":
-        sel = st.radio("선택", ["O","X"], horizontal=True)
-    else:
-        sel = st.radio("선택", q["choices"], index=0)
-
-    colA, colB = st.columns([1, 3])
-    with colA:
-        if st.button("제출"):
-            if sel == q["ans"]:
-                st.session_state.score += 1
-                st.success("정답! ✅")
-            else:
-                st.session_state.wrong.append({"문항": q["q"], "선택": sel, "정답": q["ans"]})
-                st.error("오답 ❌")
-            st.info(q["exp"])
-    with colB:
-        if st.button("다음 문항"):
-            st.session_state.q_index += 1
-            st.experimental_rerun()
-
-    st.divider()
-    st.metric("누적 점수", st.session_state.score)
-    if st.session_state.wrong:
-        st.write("**오답노트**")
-        st.dataframe(pd.DataFrame(st.session_state.wrong), use_container_width=True, hide_index=True)
-
-# ──────────────────────────────────────────────────────────────────────────────
-# 5) 대시보드 (요약/가이드)
-# ──────────────────────────────────────────────────────────────────────────────
-elif page == "대시보드":
-    st.header("📊 수업 대시보드 & 사용 가이드")
-    st.write("- 도입: **게이트 뷰어**에서 A/B 토글 → 출력 직관")
-    st.write("- 개념: **타임라인**으로 XOR 등 파형 직관")
-    st.write("- 실습: **2단 합성**으로 간단 조합논리 구성")
-    st.write("- 확인: **퀴즈** 5~7문항, 오답노트 활용")
-    st.info("발표는 시연 3분 + 설명 4분 구성. 제출물: Streamlit URL + 기획서/수업안 PDF")
+    st.info("예시 미션: (A NAND B) OR (NOT A)을 만들어 보고, 어떤 입력 조합에서 1이 되는지 설명해 보세요.")
