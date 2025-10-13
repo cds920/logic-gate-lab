@@ -52,57 +52,53 @@ def style_truth(df, a_sel, b_sel):
     return df.style.apply(_hl, axis=1)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 게이트 SVG (간단 ANSI 아이콘)
-#  - 좌: 두 입력, 가운데: 게이트, 우: 출력 (인버터 버블은 하얀 원)
+# 게이트 SVG (ANSI 스타일 아이콘)  ← f-string 표현식 안에 역슬래시 없음
 # ──────────────────────────────────────────────────────────────────────────────
 def gate_svg(gate_label, A_val, B_val, Y_val, width=640, height=260):
-    # 색상
     line = "#222"
     fill = "none"
     text = "#111"
-    on = "#1f9d55" if Y_val==1 else "#555"
+    on_color = "#1f9d55" if Y_val == 1 else "#555"
 
-    # 공통 좌표
+    # 좌표
     left_x, mid_x, right_x = 90, 280, 520
     top_y, mid_y, bot_y = 70, 130, 190
 
-    # 게이트 본체 path (게이트별)
-    body = ""
-    bubble = ""   # 인버터 버블
-    if gate_label in ["AND","NAND"]:
-        # D 모양
-        body = f'M {mid_x-60},{top_y} L {mid_x-60},{bot_y} ' \
-               f'L {mid_x},{bot_y} ' \
-               f'A 60,60 0 0,0 {mid_x},{top_y} Z'
-    elif gate_label in ["OR","NOR","XOR","XNOR"]:
-        # OR 곡선 (XOR/XNOR은 앞에 얇은 곡선 추가)
-        pre = ""
-        if gate_label in ["XOR","XNOR"]:
-            pre = f'<path d="M {mid_x-80},{top_y} C {mid_x-110},{mid_y} {mid_x-110},{mid_y} {mid_x-80},{bot_y}" ' \
-                  f'stroke="{line}" fill="none" stroke-width="3"/>'
-        body = pre + \
-            f'<path d="M {mid_x-70},{top_y} C {mid_x-30},{top_y} {mid_x+30},{mid_y-40} {mid_x+30},{mid_y} ' \
-            f'C {mid_x+30},{mid_y+40} {mid_x-30},{bot_y} {mid_x-70},{bot_y} ' \
-            f'C {mid_x-40},{mid_y} {mid_x-40},{mid_y} {mid_x-70},{top_y} Z" ' \
-            f'stroke="{line}" fill="{fill}" stroke-width="3"/>'
+    # 본체 path 데이터(문자열) 만들기
+    pre_xor_path = ""     # XOR/XNOR 전면 얇은 곡선
+    if gate_label in ["AND", "NAND"]:
+        # D자 (좌 직선, 우 반원)
+        body_path = f"M {mid_x-60},{top_y} L {mid_x-60},{bot_y} L {mid_x},{bot_y} A 60,60 0 0,0 {mid_x},{top_y} Z"
+    elif gate_label in ["OR", "NOR", "XOR", "XNOR"]:
+        if gate_label in ["XOR", "XNOR"]:
+            pre_xor_path = f"M {mid_x-80},{top_y} C {mid_x-110},{mid_y} {mid_x-110},{mid_y} {mid_x-80},{bot_y}"
+        body_path = (
+            f"M {mid_x-70},{top_y} "
+            f"C {mid_x-30},{top_y} {mid_x+30},{mid_y-40} {mid_x+30},{mid_y} "
+            f"C {mid_x+30},{mid_y+40} {mid_x-30},{bot_y} {mid_x-70},{bot_y} "
+            f"C {mid_x-40},{mid_y} {mid_x-40},{mid_y} {mid_x-70},{top_y} Z"
+        )
     elif gate_label.startswith("NOT"):
         # 삼각형
-        body = f'M {mid_x-60},{top_y} L {mid_x-60},{bot_y} L {mid_x+40},{mid_y} Z'
+        body_path = f"M {mid_x-60},{top_y} L {mid_x-60},{bot_y} L {mid_x+40},{mid_y} Z"
     else:
-        # 기타(기본은 AND)
-        body = f'M {mid_x-60},{top_y} L {mid_x-60},{bot_y} ' \
-               f'L {mid_x},{bot_y} A 60,60 0 0,0 {mid_x},{top_y} Z'
+        body_path = f"M {mid_x-60},{top_y} L {mid_x-60},{bot_y} L {mid_x},{bot_y} A 60,60 0 0,0 {mid_x},{top_y} Z"
 
-    # 버블이 필요한 게이트
-    need_bubble = gate_label in ["NAND","NOR","XNOR"] or gate_label.startswith("NOT")
-    bubble = f'<circle cx="{mid_x+44}" cy="{mid_y}" r="9" stroke="{line}" fill="#ffffff" stroke-width="3"/>' if need_bubble else ""
+    need_bubble = gate_label in ["NAND", "NOR", "XNOR"] or gate_label.startswith("NOT")
+    bubble_cx = mid_x + 44
+    out_start = bubble_cx if need_bubble else mid_x + 30
 
-    # 출력선 끝 위치 (버블 여부에 따라 다름)
-    out_start = mid_x+44 if need_bubble else mid_x+30
-    # 텍스트 라벨
-    a_lbl = "A"
-    b_lbl = "B"
-    y_lbl = "Y"
+    gate_text = (
+        "그리고" if gate_label == "AND" else
+        "또는"   if gate_label == "OR"  else
+        "부정(A)" if gate_label == "NOT(A)" else
+        "부정(B)" if gate_label == "NOT(B)" else
+        gate_label
+    )
+
+    # SVG 조각(조건부 요소 미리 구성)
+    pre_elem = f'<path d="{pre_xor_path}" stroke="{line}" fill="none" stroke-width="3"/>' if pre_xor_path else ""
+    bubble_elem = f'<circle cx="{bubble_cx}" cy="{mid_y}" r="9" stroke="{line}" fill="#ffffff" stroke-width="3"/>' if need_bubble else ""
 
     svg = f"""
     <svg width="{width}" height="{height}" viewBox="0 0 {width} {height}"
@@ -115,34 +111,34 @@ def gate_svg(gate_label, A_val, B_val, Y_val, width=640, height=260):
 
       <!-- 입력 원/라벨 -->
       <circle cx="{left_x}" cy="{top_y}" r="28" stroke="{line}" fill="none" stroke-width="3"/>
-      <text x="{left_x-8}" y="{top_y+6}" class="t">{a_lbl}={A_val}</text>
+      <text x="{left_x-8}" y="{top_y+6}" class="t">A={A_val}</text>
       <circle cx="{left_x}" cy="{bot_y}" r="28" stroke="{line}" fill="none" stroke-width="3"/>
-      <text x="{left_x-8}" y="{bot_y+6}" class="t">{b_lbl}={B_val}</text>
+      <text x="{left_x-8}" y="{bot_y+6}" class="t">B={B_val}</text>
 
       <!-- 배선 -->
       <line x1="{left_x+28}" y1="{top_y}" x2="{mid_x-60}" y2="{top_y}" stroke="{line}" stroke-width="3"/>
       <line x1="{left_x+28}" y1="{bot_y}" x2="{mid_x-60}" y2="{bot_y}" stroke="{line}" stroke-width="3"/>
 
       <!-- 게이트 본체 -->
-      <path d="{body.split('"/>')[0].replace('<path d=\"','')}" stroke="{line}" fill="{fill}" stroke-width="3"/>
+      {pre_elem}
+      <path d="{body_path}" stroke="{line}" fill="{fill}" stroke-width="3"/>
 
-      <!-- 게이트 라벨(한국어/영문 그대로) -->
-      <text x="{mid_x-22}" y="{mid_y+7}" class="t">{gate_label}</text>
+      <!-- 게이트 라벨 -->
+      <text x="{mid_x-22}" y="{mid_y+7}" class="t">{gate_text}</text>
 
       <!-- 버블(필요 시) -->
-      {bubble}
+      {bubble_elem}
 
       <!-- 출력 -->
       <line x1="{out_start}" y1="{mid_y}" x2="{right_x-28}" y2="{mid_y}" stroke="{line}" stroke-width="3"/>
-      <circle cx="{right_x}" cy="{mid_y}" r="40" stroke="{on}" fill="none" stroke-width="4"/>
-      <text x="{right_x-14}" y="{mid_y+6}" class="t" fill="{on}">{y_lbl}={Y_val}</text>
+      <circle cx="{right_x}" cy="{mid_y}" r="40" stroke="{on_color}" fill="none" stroke-width="4"/>
+      <text x="{right_x-14}" y="{mid_y+6}" class="t" fill="{on_color}">Y={Y_val}</text>
     </svg>
     """
     return svg
 
 def show_gate_svg(gate_label, A_val, B_val, Y_val):
-    svg = gate_svg(gate_label, A_val, B_val, Y_val)
-    st.markdown(svg, unsafe_allow_html=True)
+    st.markdown(gate_svg(gate_label, A_val, B_val, Y_val), unsafe_allow_html=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 페이지
@@ -183,11 +179,7 @@ if page == "게이트 뷰어":
         st.metric(label=f"출력 {gate}", value=f"{out} ({led})")
 
         st.subheader("게이트 다이어그램")
-        show_gate_svg("그리고" if gate=="AND" else
-                      "또는" if gate=="OR" else
-                      "부정(A)" if gate=="NOT(A)" else
-                      "부정(B)" if gate=="NOT(B)" else
-                      gate, A_i, B_i, out)
+        show_gate_svg(gate, A_i, B_i, out)
 
     st.info("오른쪽에서 A/B를 바꾸면, 진리표 행이 파란색으로 하이라이트되고 왼쪽 LED·다이어그램이 동시에 반응합니다.")
 
@@ -197,14 +189,13 @@ if page == "게이트 뷰어":
 elif page == "타임라인(클릭 편집)":
     st.header("🕒 타임라인 (칸을 클릭해 0/1 토글)")
 
-    # 설정
     gate = st.selectbox("게이트 선택", BASIC_GATES, index=4, key="tl_gate")  # 기본 XOR
     n = st.slider("샘플 길이(칸 수)", 8, 48, 16, step=2)
 
-    # 세션 상태 초기화/리셋
-    if "A_seq" not in st.session_state or len(st.session_state.A_seq)!=n:
+    # 세션 상태 준비
+    if "A_seq" not in st.session_state or len(st.session_state.A_seq) != n:
         st.session_state.A_seq = [0]*n
-    if "B_seq" not in st.session_state or len(st.session_state.B_seq)!=n:
+    if "B_seq" not in st.session_state or len(st.session_state.B_seq) != n:
         st.session_state.B_seq = [0]*n
 
     c_btn1, c_btn2, c_btn3 = st.columns(3)
@@ -239,7 +230,6 @@ elif page == "타임라인(클릭 편집)":
     B_w = np.array(st.session_state.B_seq, dtype=int)
     Y_w = np.array([GATE_FUNCS[gate](int(a), int(b)) for a,b in zip(A_w,B_w)])
 
-    # 시각화
     fig = plt.figure(figsize=(9, 3.2))
     t = np.arange(n)
     plt.step(t, A_w+2, where="post", label="A +2")
@@ -252,7 +242,7 @@ elif page == "타임라인(클릭 편집)":
     plt.grid(True, linestyle="--", alpha=0.3)
     st.pyplot(fig, use_container_width=True)
 
-    st.success("팁: XOR을 선택한 뒤 A/B에서 서로 다른 칸을 만들어 보세요. 두 입력이 다를 때만 출력이 1이 됩니다.")
+    st.success("팁: XOR을 선택한 뒤 A/B에서 서로 다른 칸을 몇 개 만들면, 두 입력이 다를 때만 출력이 1이 되는 게 바로 보입니다.")
 
 # ──────────────────────────────────────────────────────────────────────────────
 # 3) 2단 합성
@@ -260,7 +250,6 @@ elif page == "타임라인(클릭 편집)":
 elif page == "2단 합성":
     st.header("🧱 2단 합성 (G1(A,B) → comb → G2(A,B))")
 
-    # 입력 스위치
     i1, i2 = st.columns(2)
     with i1:
         A_local = st.toggle("A", value=False, key="compose_A")
