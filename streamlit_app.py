@@ -1,9 +1,12 @@
 # streamlit_app.py
 import streamlit as st
-import pandas as pd
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
-from streamlit.components.v1 import html as st_html
+from PIL import Image, ImageDraw, ImageFont
+
+# 클릭 좌표를 받기 위한 컴포넌트
+from streamlit_drawable_canvas import st_canvas
 
 st.set_page_config(page_title="LogicLab: 게이트박스", page_icon="🔌", layout="wide")
 
@@ -21,12 +24,12 @@ def XNOR(a, b): return NOT(XOR(a, b))
 GATE_FUNCS = {
     "AND":    lambda a, b: AND(a, b),
     "OR":     lambda a, b: OR(a, b),
-    "NOT(A)": lambda a, b: NOT(a),
-    "NOT(B)": lambda a, b: NOT(b),
     "NAND":   lambda a, b: NAND(a, b),
     "NOR":    lambda a, b: NOR(a, b),
     "XOR":    lambda a, b: XOR(a, b),
     "XNOR":   lambda a, b: XNOR(a, b),
+    "NOT(A)": lambda a, b: NOT(a),
+    "NOT(B)": lambda a, b: NOT(b),
 }
 BASIC_GATES = ["AND","OR","NAND","NOR","XOR","XNOR","NOT(A)","NOT(B)"]
 
@@ -34,8 +37,7 @@ def truth_table(gate_name):
     rows = []
     for a in [0,1]:
         for b in [0,1]:
-            y = GATE_FUNCS[gate_name](a, b)
-            rows.append({"A":a,"B":b, gate_name:y})
+            rows.append({"A":a,"B":b, gate_name:GATE_FUNCS[gate_name](a,b)})
     return pd.DataFrame(rows)
 
 def mark_current(df, a, b):
@@ -50,126 +52,160 @@ def style_truth(df, a_sel, b_sel):
     return df.style.apply(_hl, axis=1)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 게이트 SVG (ANSI 느낌, 깨짐 방지 위해 HTML로 렌더)
+# 클릭 가능한 게이트 다이어그램 (PIL로 그려서 Canvas에 표시)
+#  - A/B 입력 원: 클릭하면 0/1 토글
+#  - 출력 램프: 결과에 따라 회색/초록
+#  - 게이트 모양: AND/OR/NOT 기본형 + 버블(NAND/NOR/XNOR)
 # ──────────────────────────────────────────────────────────────────────────────
-def gate_svg(gate_label, A_val, B_val, Y_val, width=680, height=260):
-    line = "#222222"
-    fill = "none"
-    text = "#111111"
-    on_color = "#1f9d55" if Y_val==1 else "#555555"
+def draw_gate_image(gate, A, B, Y, W=900, H=330):
+    img = Image.new("RGBA", (W, H), (255,255,255,0))
+    d = ImageDraw.Draw(img)
 
-    left_x, mid_x, right_x = 90, 300, 560
-    top_y, mid_y, bot_y = 70, 130, 190
+    # 색상/굵기
+    line = (34,34,34,255)
+    lamp_on = (31,157,85,255)
+    lamp_off = (120,120,120,255)
+    thick = 6
 
-    # 본체 path
-    pre_xor_path = ""
-    if gate_label in ["AND","NAND"]:
-        body_path = f"M {mid_x-70},{top_y} L {mid_x-70},{bot_y} L {mid_x},{bot_y} A 70,60 0 0,0 {mid_x},{top_y} Z"
-    elif gate_label in ["OR","NOR","XOR","XNOR"]:
-        if gate_label in ["XOR","XNOR"]:
-            pre_xor_path = f"M {mid_x-90},{top_y} C {mid_x-120},{mid_y} {mid_x-120},{mid_y} {mid_x-90},{bot_y}"
-        body_path = (
-            f"M {mid_x-80},{top_y} "
-            f"C {mid_x-40},{top_y} {mid_x+30},{mid_y-40} {mid_x+30},{mid_y} "
-            f"C {mid_x+30},{mid_y+40} {mid_x-40},{bot_y} {mid_x-80},{bot_y} "
-            f"C {mid_x-50},{mid_y} {mid_x-50},{mid_y} {mid_x-80},{top_y} Z"
-        )
-    elif gate_label.startswith("NOT"):
-        body_path = f"M {mid_x-70},{top_y} L {mid_x-70},{bot_y} L {mid_x+50},{mid_y} Z"
+    # 좌표
+    Ax, Ay = 110, 95
+    Bx, By = 110, 235
+    r_in = 34
+    gate_x = 330
+    mid_y = (Ay+By)//2
+    out_x = 760
+    r_out = 46
+
+    # 입력 원
+    d.ellipse([Ax-r_in, Ay-r_in, Ax+r_in, Ay+r_in], outline=line, width=thick)
+    d.ellipse([Bx-r_in, By-r_in, Bx+r_in, By+r_in], outline=line, width=thick)
+
+    # 입력 라벨
+    font = ImageFont.load_default()
+    d.text((Ax-16, Ay-6), f"A={A}", fill=line, font=font)
+    d.text((Bx-16, By-6), f"B={B}", fill=line, font=font)
+
+    # 배선 (입력 → 게이트)
+    d.line([Ax+r_in, Ay, gate_x-80, Ay], fill=line, width=thick)
+    d.line([Bx+r_in, By, gate_x-80, By], fill=line, width=thick)
+
+    # 게이트 본체
+    # AND / NAND : D 모양
+    if gate in ["AND","NAND"]:
+        d.line([gate_x-80, Ay, gate_x-80, By], fill=line, width=thick)
+        d.arc([gate_x-80, Ay-70, gate_x+60, By+70], start=270, end=90, fill=line, width=thick)
+    # OR / NOR / XOR / XNOR : 타원형 근사
+    elif gate in ["OR","NOR","XOR","XNOR"]:
+        d.line([gate_x-90, mid_y, gate_x-60, mid_y], fill=line, width=thick)
+        d.arc([gate_x-100, Ay-40, gate_x+70, By+40], start=300, end=60, fill=line, width=thick)
+        d.arc([gate_x-80, Ay-70, gate_x+60, By+70], start=260, end=100, fill=line, width=thick)
+        if gate in ["XOR","XNOR"]:
+            # 앞쪽 얇은 곡선
+            d.arc([gate_x-120, Ay-70, gate_x+20, By+70], start=260, end=100, fill=line, width=3)
+    # NOT(A)/NOT(B) : 삼각형
     else:
-        body_path = f"M {mid_x-70},{top_y} L {mid_x-70},{bot_y} L {mid_x},{bot_y} A 70,60 0 0,0 {mid_x},{top_y} Z"
+        d.polygon([(gate_x-80, Ay-70), (gate_x-80, By+70), (gate_x+70, mid_y)], outline=line, width=thick)
 
-    need_bubble = gate_label in ["NAND","NOR","XNOR"] or gate_label.startswith("NOT")
-    bubble_cx = mid_x + 54
-    out_start = bubble_cx if need_bubble else mid_x + 30
+    # 버블이 필요한 경우
+    need_bubble = gate in ["NAND","NOR","XNOR"] or gate.startswith("NOT")
+    bubble_cx, bubble_cy, bubble_r = gate_x+74, mid_y, 12
+    if need_bubble:
+        d.ellipse([bubble_cx-bubble_r, bubble_cy-bubble_r, bubble_cx+bubble_r, bubble_cy+bubble_r],
+                  outline=line, fill=(255,255,255,255), width=thick)
 
-    # 한국어 라벨 변환(원하면 영문 그대로 gate_label 써도 됨)
-    gate_text = {"AND":"그리고","OR":"또는","NOT(A)":"부정(A)","NOT(B)":"부정(B)"}.get(gate_label,gate_label)
+    # 출력선
+    start_x = bubble_cx + bubble_r if need_bubble else gate_x+56
+    d.line([start_x, mid_y, out_x- r_out - 10, mid_y], fill=line, width=thick)
 
-    pre_elem = f'<path d="{pre_xor_path}" stroke="{line}" fill="none" stroke-width="3"/>' if pre_xor_path else ""
-    bubble_elem = f'<circle cx="{bubble_cx}" cy="{mid_y}" r="9" stroke="{line}" fill="#ffffff" stroke-width="3"/>' if need_bubble else ""
+    # 출력 램프
+    d.ellipse([out_x-r_out, mid_y-r_out, out_x+r_out, mid_y+r_out],
+              outline=lamp_on if Y==1 else lamp_off, width=thick)
+    d.text((out_x-12, mid_y-6), f"{Y}", fill=lamp_on if Y==1 else lamp_off, font=font)
 
-    svg = f"""
-    <svg width="{width}" height="{height}" viewBox="0 0 {width} {height}" xmlns="http://www.w3.org/2000/svg">
-      <style>
-        .t {{ font-family: 'DejaVu Sans','Arial',sans-serif; fill:{text}; font-size:18px; }}
-      </style>
+    return img, (Ax,Ay,r_in), (Bx,By,r_in)
 
-      <!-- 입력 노드 -->
-      <circle cx="{left_x}" cy="{top_y}" r="28" stroke="{line}" fill="none" stroke-width="3"/>
-      <text x="{left_x-8}" y="{top_y+6}" class="t">A={A_val}</text>
-      <circle cx="{left_x}" cy="{bot_y}" r="28" stroke="{line}" fill="none" stroke-width="3"/>
-      <text x="{left_x-8}" y="{bot_y+6}" class="t">B={B_val}</text>
-
-      <!-- 배선 -->
-      <line x1="{left_x+28}" y1="{top_y}" x2="{mid_x-70}" y2="{top_y}" stroke="{line}" stroke-width="3"/>
-      <line x1="{left_x+28}" y1="{bot_y}" x2="{mid_x-70}" y2="{bot_y}" stroke="{line}" stroke-width="3"/>
-
-      <!-- 본체 -->
-      {pre_elem}
-      <path d="{body_path}" stroke="{line}" fill="{fill}" stroke-width="3"/>
-      <text x="{mid_x-22}" y="{mid_y+7}" class="t">{gate_text}</text>
-
-      {bubble_elem}
-
-      <!-- 출력 -->
-      <line x1="{out_start}" y1="{mid_y}" x2="{right_x-28}" y2="{mid_y}" stroke="{line}" stroke-width="3"/>
-      <circle cx="{right_x}" cy="{mid_y}" r="40" stroke="{on_color}" fill="none" stroke-width="4"/>
-      <text x="{right_x-14}" y="{mid_y+6}" class="t" fill="{on_color}">Y={Y_val}</text>
-    </svg>
-    """
-    return svg
-
-def show_gate_svg(gate_label, A_val, B_val, Y_val):
-    svg = gate_svg(gate_label, A_val, B_val, Y_val)
-    # components HTML로 렌더(브라우저 호환성 ↑)
-    st_html(svg, height=280)
+def point_in_circle(px, py, cx, cy, r):
+    return (px-cx)**2 + (py-cy)**2 <= r**2
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 사이드바 & 페이지
+# 사이드바 / 페이지
 # ──────────────────────────────────────────────────────────────────────────────
 st.sidebar.title("LogicLab: 게이트박스")
-page = st.sidebar.radio("페이지", ["게이트 뷰어","타임라인(클릭 편집)","2단 합성"])
+page = st.sidebar.radio("페이지", ["게이트 뷰어","타임라인(클릭 편집)"])
 st.sidebar.caption("ⓘ 2학년 도제반 논리회로 도입/실습 확인용")
 
+# 세션 상태
+if "A" not in st.session_state: st.session_state.A = 0
+if "B" not in st.session_state: st.session_state.B = 0
+if "canvas_key" not in st.session_state: st.session_state.canvas_key = 0
+
 # ──────────────────────────────────────────────────────────────────────────────
-# 1) 게이트 뷰어 (그림 옆 스위치, 오른쪽 진리표)
+# 1) 게이트 뷰어 (도면 위 클릭 스위치)
 # ──────────────────────────────────────────────────────────────────────────────
 if page == "게이트 뷰어":
-    st.header("🔎 게이트 뷰어 (그림 옆 스위치 / 우측 진리표)")
-    gate = st.selectbox("게이트 선택", BASIC_GATES, index=0, key="viewer_gate")
+    st.header("🔎 게이트 뷰어 (도면 위 클릭 스위치)")
 
-    col_pic, col_switch, col_table = st.columns([1.2, 0.6, 1.2])
+    gate = st.selectbox("게이트 선택", BASIC_GATES, index=0)
 
-    with col_switch:
-        st.subheader("입력 스위치")
-        A_local = st.toggle("A", value=False, key="viewer_A")
-        B_local = st.toggle("B", value=False, key="viewer_B")
-        A_i, B_i = int(A_local), int(B_local)
+    # NOT 게이트는 단일 입력으로 동작하도록 처리
+    A_in = st.session_state.A
+    B_in = st.session_state.B
+    if gate == "NOT(A)":
+        B_in = 0
+    elif gate == "NOT(B)":
+        A_in = 0
 
-    with col_pic:
-        st.subheader("입/출력 패널")
-        out = GATE_FUNCS[gate](A_i, B_i)
-        led = "🟢 켜짐" if out==1 else "⚫ 꺼짐"
-        st.metric(label=f"출력 {gate}", value=f"{out} ({led})")
-        st.subheader("게이트 다이어그램")
-        show_gate_svg(gate, A_i, B_i, out)
+    Y = GATE_FUNCS[gate](A_in, B_in)
 
-    with col_table:
-        st.subheader("진리표")
-        df = truth_table(gate)
-        dfm = mark_current(df, A_i, B_i)
-        st.dataframe(style_truth(dfm, A_i, B_i), use_container_width=True, hide_index=True)
+    # 다이어그램 + 클릭 캔버스
+    img, A_circle, B_circle = draw_gate_image(gate, A_in, B_in, Y)
+    st.caption("도면의 A/B 원을 클릭하면 값이 토글됩니다.")
+    canvas_res = st_canvas(
+        background_image=img,
+        width=img.width,
+        height=img.height,
+        drawing_mode="point",           # 클릭 좌표만 받기
+        point_display_radius=1,
+        stroke_width=0,
+        update_streamlit=True,
+        key=f"canvas_{st.session_state.canvas_key}",
+        display_toolbar=False
+    )
+
+    # 클릭 처리
+    if canvas_res.json_data and "objects" in canvas_res.json_data:
+        objs = canvas_res.json_data["objects"]
+        if len(objs) > 0:
+            last = objs[-1]
+            # 좌표는 좌상단 기준 (left, top)
+            px, py = float(last.get("left",0)), float(last.get("top",0))
+            (Ax,Ay,Ar) = A_circle
+            (Bx,By,Br) = B_circle
+            toggled = False
+            if point_in_circle(px, py, Ax, Ay, Ar):
+                st.session_state.A = 1 - st.session_state.A
+                toggled = True
+            elif point_in_circle(px, py, Bx, By, Br):
+                st.session_state.B = 1 - st.session_state.B
+                toggled = True
+            if toggled:
+                st.session_state.canvas_key += 1
+                st.experimental_rerun()
+
+    # 우측: 진리표 (현재 A/B와 동기)
+    df = truth_table(gate)
+    dfm = mark_current(df, A_in, B_in)
+    st.dataframe(style_truth(dfm, A_in, B_in), use_container_width=True, hide_index=True)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 2) 타임라인 (칸 클릭으로 0/1 토글)
+# 2) 타임라인 (칸 클릭으로 0/1 토글, 최대 12칸, x축 1단위 표시)
 # ──────────────────────────────────────────────────────────────────────────────
 elif page == "타임라인(클릭 편집)":
     st.header("🕒 타임라인 (칸을 클릭해 0/1 토글)")
+    gate = st.selectbox("게이트 선택", BASIC_GATES, index=4)  # 기본 XOR
+    n = st.slider("샘플 길이(칸 수)", 4, 12, 12, step=1)
 
-    gate = st.selectbox("게이트 선택", BASIC_GATES, index=4, key="tl_gate")  # 기본 XOR
-    n = st.slider("샘플 길이(칸 수)", 8, 48, 16, step=2)
-
+    # 세션 시퀀스 준비
     if "A_seq" not in st.session_state or len(st.session_state.A_seq)!=n:
         st.session_state.A_seq = [0]*n
     if "B_seq" not in st.session_state or len(st.session_state.B_seq)!=n:
@@ -193,99 +229,32 @@ elif page == "타임라인(클릭 편집)":
     cols = st.columns(n, gap="small")
     for i, c in enumerate(cols):
         lab = "●" if st.session_state.A_seq[i]==1 else "○"
-        if c.button(lab, key=f"A_{i}"):
+        if c.button(lab, key=f"TA_{i}"):
             st.session_state.A_seq[i] = 1 - st.session_state.A_seq[i]
 
     st.markdown("#### B 행을 눌러 0/1 토글")
     cols = st.columns(n, gap="small")
     for i, c in enumerate(cols):
         lab = "●" if st.session_state.B_seq[i]==1 else "○"
-        if c.button(lab, key=f"B_{i}"):
+        if c.button(lab, key=f"TB_{i}"):
             st.session_state.B_seq[i] = 1 - st.session_state.B_seq[i]
 
     A_w = np.array(st.session_state.A_seq, dtype=int)
     B_w = np.array(st.session_state.B_seq, dtype=int)
-    Y_w = np.array([GATE_FUNCS[gate](int(a),int(b)) for a,b in zip(A_w,B_w)])
+    Y_w = np.array([GATE_FUNCS[gate](int(a), int(b)) for a, b in zip(A_w, B_w)])
 
-    fig = plt.figure(figsize=(9,3.2))
+    # 시각화 (x축 0..n-1, 1 간격)
+    fig = plt.figure(figsize=(9, 3.2))
     t = np.arange(n)
     plt.step(t, A_w+2, where="post", label="A +2")
     plt.step(t, B_w+1, where="post", label="B +1")
     plt.step(t, Y_w+0, where="post", label=f"Y={gate}")
     plt.yticks([0,1,2,3], ["0","1","B","A"])
+    plt.xticks(t)  # 0,1,2,… 1씩 증가
     plt.xlabel("샘플")
-    plt.ylim(-0.5,3.5)
+    plt.ylim(-0.5, 3.5)
     plt.legend(loc="upper right")
     plt.grid(True, linestyle="--", alpha=0.3)
     st.pyplot(fig, use_container_width=True)
 
-# ──────────────────────────────────────────────────────────────────────────────
-# 3) 2단 합성 (드롭다운 기본 + 선택적 드래그 팔레트)
-# ──────────────────────────────────────────────────────────────────────────────
-elif page == "2단 합성":
-    st.header("🧱 2단 합성 (G1(A,B) → comb → G2(A,B))")
-
-    # 입력 스위치
-    i1, i2 = st.columns(2)
-    with i1:
-        A_local = st.toggle("A", value=False, key="compose_A")
-    with i2:
-        B_local = st.toggle("B", value=False, key="compose_B")
-    A_i, B_i = int(A_local), int(B_local)
-
-    c1, c2, c3 = st.columns([1,1,1])
-    with c1:
-        g1 = st.selectbox("1단 게이트 G1", BASIC_GATES, index=0)
-    with c2:
-        comb = st.selectbox("결합 게이트", ["AND","OR","XOR","XNOR","NAND","NOR"])
-    with c3:
-        g2 = st.selectbox("1단 게이트 G2", BASIC_GATES, index=1)
-
-    G1 = GATE_FUNCS[g1](A_i, B_i)
-    G2 = GATE_FUNCS[g2](A_i, B_i)
-    Y  = GATE_FUNCS[comb](G1, G2)
-
-    st.write(f"**입력** A={A_i}, B={B_i} → **G1={g1}→{G1}**, **G2={g2}→{G2}**, **결합={comb}→Y={Y}**")
-    st.metric("최종 출력 Y", Y)
-
-    df_tt = pd.DataFrame(
-        [{"A":a,"B":b,"G1":GATE_FUNCS[g1](a,b),"G2":GATE_FUNCS[g2](a,b),
-          f"Y={comb}(G1,G2)":GATE_FUNCS[comb](GATE_FUNCS[g1](a,b), GATE_FUNCS[g2](a,b))}
-         for a in [0,1] for b in [0,1]]
-    )
-    st.dataframe(mark_current(df_tt, A_i, B_i), use_container_width=True, hide_index=True)
-
-    st.markdown("—")
-    st.markdown("**옵션:** `streamlit-elements`를 설치하면 드래그로 블록 배치 데모를 사용할 수 있어요.")
-    # 간단 안내(설치는 requirements.txt에 streamlit-elements 추가)
-    try:
-        import streamlit_elements as elements
-        from streamlit_elements import mui, dashboard
-        st.success("streamlit-elements 사용 가능: 아래에서 블록을 드래그해 보세요.")
-        with elements.elements("drag_area"):
-            layout = [
-                dashboard.Item("A", 0, 0, 2, 1),
-                dashboard.Item("B", 0, 1, 2, 1),
-                dashboard.Item("G1", 2, 0, 2, 1),
-                dashboard.Item("G2", 2, 1, 2, 1),
-                dashboard.Item("COMB", 4, 0, 2, 2),
-            ]
-            with dashboard.Grid(layout, draggableHandle=".handle", cols=6):
-                with mui.Paper(key="A", className="handle"):
-                    mui.Typography("입력 A", variant="h6")
-                    mui.Typography(f"값: {A_i}")
-                with mui.Paper(key="B", className="handle"):
-                    mui.Typography("입력 B", variant="h6")
-                    mui.Typography(f"값: {B_i}")
-                with mui.Paper(key="G1", className="handle"):
-                    mui.Typography(f"G1: {g1}", variant="h6")
-                    mui.Typography(f"출력: {G1}")
-                with mui.Paper(key="G2", className="handle"):
-                    mui.Typography(f"G2: {g2}", variant="h6")
-                    mui.Typography(f"출력: {G2}")
-                with mui.Paper(key="COMB", className="handle"):
-                    mui.Typography(f"결합: {comb}", variant="h6")
-                    mui.Typography(f"최종 Y: {Y}")
-        st.caption("※ 데모용 배치만 지원. 연결선은 위 드롭다운으로 지정합니다.")
-    except Exception:
-        st.info("`pip install streamlit-elements` 설치 시 드래그 배치 데모가 활성화됩니다.")
+    st.success("팁: XOR 선택 후 A/B에서 서로 다른 칸을 몇 개 만들면, 두 입력이 다를 때만 출력이 1이 되는 게 보입니다.")
