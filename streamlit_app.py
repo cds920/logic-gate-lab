@@ -51,82 +51,104 @@ def style_truth(df, a_sel, b_sel):
     return df.style.apply(_hl, axis=1)
 
 # ──────────────────────────────────────────────────────────────────────────────
-# 게이트 도면(Plotly) + 클릭 토글
+# 게이트 도면(Plotly) + 클릭 토글  — 실물 느낌 도형 & LED
 # ──────────────────────────────────────────────────────────────────────────────
 def gate_figure(gate:str, A:int, B:int):
     """
-    x-range: 0..6, y-range: 0..4
-    A 원 중심 (1,3), B 원 중심 (1,1)
-    게이트 몸통: 간단 사각(2..4, 0.7..3.3) + 텍스트
-    인버터 버블: 필요시 (4.15, 2) 반지름 0.12
-    출력 램프: (5.5, 2) 반지름 0.45 (초록/회색)
+    좌표계: x 0..8, y 0..5
+    A 중심 (1.2,3.8), B 중심 (1.2,1.2)
+    몸통: AND D-모양 / OR·XOR 곡선 / NOT 삼각형
+    버블: 필요 시 (4.9, 2.5) r=0.18
+    LED: 테두리 + 채움 + 하이라이트(흰 점)
     """
     lamp_on = "rgb(34,197,94)"   # 초록
-    lamp_off = "rgb(90,90,90)"   # 회색
-    line = "rgb(30,30,30)"
+    lamp_off = "rgb(110,110,110)"# 회색
+    line = "rgb(35,35,35)"
 
-    # 출력 계산 (NOT 단일 입력 처리)
-    a_in, b_in = (A, B)
-    if gate == "NOT(A)":
-        b_in = 0
-    if gate == "NOT(B)":
-        a_in = 0
+    # NOT 단일 입력 처리
+    a_in, b_in = A, B
+    if gate == "NOT(A)": b_in = 0
+    if gate == "NOT(B)": a_in = 0
     Y = GATE_FUNCS[gate](a_in, b_in)
 
     fig = go.Figure()
+    fig.update_layout(clickmode="event+select")  # 클릭 이벤트 확실히
 
-    # 클릭 타겟(투명 마커) — customdata로 'A', 'B' 태그
+    # ── 클릭 타겟(투명 마커) : A, B
     fig.add_trace(go.Scatter(
-        x=[1], y=[3], mode="markers+text",
-        marker=dict(size=40, opacity=0.01),
-        text=[f"A={A}"], textposition="middle left",
-        customdata=["A"], hovertemplate="A 입력 원 클릭<extra></extra>",
-        showlegend=False
+        name="A_target",
+        x=[1.2], y=[3.8], mode="markers",
+        marker=dict(size=80, color="rgba(0,0,0,0.001)"),
+        customdata=["A"], hovertemplate="A 입력 클릭<extra></extra>", showlegend=False
     ))
     fig.add_trace(go.Scatter(
-        x=[1], y=[1], mode="markers+text",
-        marker=dict(size=40, opacity=0.01),
-        text=[f"B={B}"], textposition="middle left",
-        customdata=["B"], hovertemplate="B 입력 원 클릭<extra></extra>",
-        showlegend=False
+        name="B_target",
+        x=[1.2], y=[1.2], mode="markers",
+        marker=dict(size=80, color="rgba(0,0,0,0.001)"),
+        customdata=["B"], hovertemplate="B 입력 클릭<extra></extra>", showlegend=False
     ))
 
-    # 입력 원(시각용)
-    fig.add_shape(type="circle", xref="x", yref="y",
-                  x0=1-0.35, x1=1+0.35, y0=3-0.35, y1=3+0.35,
-                  line=dict(color=line, width=3))
-    fig.add_shape(type="circle", xref="x", yref="y",
-                  x0=1-0.35, x1=1+0.35, y0=1-0.35, y1=1+0.35,
-                  line=dict(color=line, width=3))
+    # ── 입력 원 (시각)
+    for cx, cy, label, val in [(1.2,3.8,"A",A),(1.2,1.2,"B",B)]:
+        fig.add_shape(type="circle", x0=cx-0.45, x1=cx+0.45, y0=cy-0.45, y1=cy+0.45,
+                      line=dict(color=line, width=4))
+        fig.add_annotation(x=cx-0.85, y=cy, text=f"{label}={val}",
+                           showarrow=False, xanchor="right")
 
-    # 배선(입력 → 게이트)
-    fig.add_shape(type="line", x0=1+0.35, y0=3, x1=2, y1=3, line=dict(color=line, width=3))
-    fig.add_shape(type="line", x0=1+0.35, y0=1, x1=2, y1=1, line=dict(color=line, width=3))
+    # ── 배선 (입력 → 게이트)
+    fig.add_shape(type="line", x0=1.65, y0=3.8, x1=2.7, y1=3.8, line=dict(color=line, width=4))
+    fig.add_shape(type="line", x0=1.65, y0=1.2, x1=2.7, y1=1.2, line=dict(color=line, width=4))
 
-    # 게이트 몸통 (간단 직사각형) + 라벨
-    fig.add_shape(type="rect", x0=2, y0=0.7, x1=4, y1=3.3, line=dict(color=line, width=3))
-    fig.add_annotation(x=3, y=2, text=gate, showarrow=False)
+    # ── 게이트 몸통
+    if gate in ["AND","NAND"]:
+        # D 모양 (직사각 + 반원)
+        fig.add_shape(type="rect", x0=2.7, y0=0.8, x1=4.4, y1=4.2, line=dict(color=line, width=4))
+        # 반원
+        fig.add_shape(type="path",
+                      path="M 4.4 0.8 A 1.7 1.7 0 0 1 4.4 4.2 Z",
+                      line=dict(color=line, width=4), fillcolor="rgba(0,0,0,0)")
+    elif gate in ["OR","NOR","XOR","XNOR"]:
+        # OR 곡선
+        # 앞쪽 얇은 곡선(XOR/XNOR)
+        if gate in ["XOR","XNOR"]:
+            fig.add_shape(type="path",
+                path="M 2.4 0.8 Q 2.0 2.5 2.4 4.2",
+                line=dict(color=line, width=2))
+        fig.add_shape(type="path",
+            path="M 2.7 0.8 Q 3.8 0.8 4.6 2.0 Q 3.8 3.2 2.7 4.2 Q 2.2 2.5 2.7 0.8 Z",
+            line=dict(color=line, width=4), fillcolor="rgba(0,0,0,0)")
+    else:
+        # NOT: 삼각형
+        fig.add_shape(type="path",
+            path="M 2.7 0.8 L 2.7 4.2 L 4.6 2.5 Z",
+            line=dict(color=line, width=4), fillcolor="rgba(0,0,0,0)")
 
-    # 인버터 버블 필요 여부
+    # 라벨
+    fig.add_annotation(x=3.6, y=2.5, text=gate, showarrow=False)
+
+    # ── 인버터 버블
     need_bubble = gate in ["NAND","NOR","XNOR"] or gate.startswith("NOT")
-    out_start_x = 4.15 if need_bubble else 4
-
+    out_start_x = 4.8 if need_bubble else 4.6
     if need_bubble:
-        fig.add_shape(type="circle", x0=4.03, x1=4.27, y0=1.88, y1=2.12,
-                      line=dict(color=line, width=3))
+        fig.add_shape(type="circle", x0=4.62, x1=4.98, y0=2.32, y1=2.68, line=dict(color=line, width=4))
 
-    # 출력선 + 출력 램프
-    fig.add_shape(type="line", x0=out_start_x, y0=2, x1=5.05, y1=2, line=dict(color=line, width=3))
-    # 램프 테두리
-    lamp_color = lamp_on if Y==1 else lamp_off
-    fig.add_shape(type="circle", x0=5.05, x1=5.95, y0=1.55, y1=2.45,
-                  line=dict(color=lamp_color, width=6))
-    fig.add_annotation(x=5.5, y=2, text=str(Y), font=dict(color=lamp_color), showarrow=False)
+    # ── 출력선
+    fig.add_shape(type="line", x0=out_start_x, y0=2.5, x1=6.0, y1=2.5, line=dict(color=line, width=4))
 
-    # 축/여백 정리
-    fig.update_xaxes(range=[0,6], visible=False)
-    fig.update_yaxes(range=[0,4], visible=False, scaleanchor="x", scaleratio=1)
-    fig.update_layout(margin=dict(l=10,r=10,t=10,b=10), height=320)
+    # ── LED (테두리 + 내부 채움 + 하이라이트)
+    led_color = lamp_on if Y==1 else lamp_off
+    # 테두리
+    fig.add_shape(type="circle", x0=6.0, x1=7.0, y0=1.8, y1=3.2, line=dict(color=led_color, width=6))
+    # 내부 채움
+    fig.add_shape(type="circle", x0=6.08, x1=6.92, y0=1.88, y1=3.12, line=dict(color=led_color, width=0), fillcolor=led_color)
+    # 하이라이트(작은 흰 점)
+    fig.add_shape(type="circle", x0=6.15, x1=6.35, y0=2.85, y1=3.05, line=dict(color="white", width=0), fillcolor="white")
+    fig.add_annotation(x=6.5, y=2.5, text=str(Y), font=dict(color="white"), showarrow=False)
+
+    # 축/여백
+    fig.update_xaxes(range=[0,8], visible=False)
+    fig.update_yaxes(range=[0,5], visible=False, scaleanchor="x", scaleratio=1)
+    fig.update_layout(margin=dict(l=10,r=10,t=10,b=10), height=380)
 
     return fig, Y
 
@@ -146,25 +168,27 @@ if "B" not in st.session_state: st.session_state.B = 0
 # ──────────────────────────────────────────────────────────────────────────────
 if page == "게이트 뷰어":
     st.header("🔎 게이트 뷰어 (도면 클릭 스위치)")
-
     gate = st.selectbox("게이트 선택", BASIC_GATES, index=0)
+
     fig, Y = gate_figure(gate, st.session_state.A, st.session_state.B)
 
     st.caption("도면의 A/B 원을 클릭하면 값이 토글됩니다.")
-    clicks = plotly_events(fig, click_event=True, hover_event=False, select_event=False, key="gateplot")
+    events = plotly_events(fig, click_event=True, select_event=False, hover_event=False, key="gateplot")
 
-    # 클릭 처리
-    if clicks:
-        tag = clicks[0].get("customdata")
-        if tag == "A":
+    # 클릭 처리 (trace 이름/ customdata 확인)
+    if events:
+        # streamlit-plotly-events는 선택된 포인트의 trace, pointIndex를 반환
+        e = events[0]
+        trace_name = e.get("curveNumber")  # trace index
+        # 0: A_target, 1: B_target  (위에서 추가한 순서)
+        if trace_name == 0:
             st.session_state.A = 1 - st.session_state.A
             st.experimental_rerun()
-        if tag == "B":
+        elif trace_name == 1:
             st.session_state.B = 1 - st.session_state.B
             st.experimental_rerun()
 
-    # 우측 진리표(하이라이트)
-    # NOT 단일 입력 처리용으로 보여줄 A/B는 계산에 쓴 값으로
+    # NOT 단일 입력일 때 표시용 A/B
     a_show, b_show = st.session_state.A, st.session_state.B
     if gate == "NOT(A)": b_show = 0
     if gate == "NOT(B)": a_show = 0
@@ -181,7 +205,6 @@ elif page == "타임라인(클릭 편집)":
     gate = st.selectbox("게이트 선택", BASIC_GATES, index=4)  # 기본 XOR
     n = st.slider("샘플 길이(칸 수)", 4, 12, 12, step=1)
 
-    # 시퀀스 상태
     if "A_seq" not in st.session_state or len(st.session_state.A_seq)!=n:
         st.session_state.A_seq = [0]*n
     if "B_seq" not in st.session_state or len(st.session_state.B_seq)!=n:
