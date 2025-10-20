@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="LogicLab: 게이트박스", page_icon="🔌", layout="wide")
 
-# ── 논리 연산 ────────────────────────────────────────────────────────────────
+# ── Logic ops ────────────────────────────────────────────────────────────────
 def AND(a, b):  return int(a and b)
 def OR(a, b):   return int(a or b)
 def NOT(a):     return int(0 if a else 1)
@@ -21,166 +21,155 @@ GATE_FUNCS = {
     "NAND": lambda a, b: NAND(a, b),
     "XOR":  lambda a, b: XOR(a, b),
 }
-BASIC_GATES = ["NOT","AND","OR","NAND","XOR"]
+GATES = ["NOT","AND","OR","NAND","XOR"]
 
 BOOL_TEX = {
     "NOT":  r"Y=\lnot A",
     "AND":  r"Y=A\cdot B",
     "OR":   r"Y=A+B",
-    "NAND": r"Y=\lnot\left(A\cdot B\right)",
+    "NAND": r"Y=\lnot\!\left(A\cdot B\right)",
     "XOR":  r"Y=A\oplus B",
 }
 
-# ── 진리표(게이트별) ─────────────────────────────────────────────────────────
-def truth_table(gate_name: str) -> pd.DataFrame:
-    if gate_name == "NOT":
+# ── Truth table ──────────────────────────────────────────────────────────────
+def truth_table(gate: str) -> pd.DataFrame:
+    if gate == "NOT":
         return pd.DataFrame([{"A":0,"Y":GATE_FUNCS["NOT"](0,0)},
                              {"A":1,"Y":GATE_FUNCS["NOT"](1,0)}])
-    rows = []
-    for a in [0,1]:
-        for b in [0,1]:
-            rows.append({"A":a,"B":b,"Y":GATE_FUNCS[gate_name](a,b)})
+    rows = [{"A":a,"B":b,"Y":GATE_FUNCS[gate](a,b)} for a in [0,1] for b in [0,1]]
     return pd.DataFrame(rows)
 
-# ── 게이트 도면(Plotly) + LED ────────────────────────────────────────────────
-def gate_figure(gate:str, A:int, B:int):
+# ── Gate drawing (Plotly) ────────────────────────────────────────────────────
+def gate_figure(gate: str, A: int, B: int):
     """
-    좌표계: x 0..8, y 0..5
-    입력 원(라벨), 게이트(실물 느낌), 우측 LED(아이콘 스타일)
+    좌표: x 0..9, y 0..6  (비율 고정)
+    표준 느낌의 게이트 심볼 + LED 출력
     """
-    lamp_on = "rgb(34,197,94)"
-    lamp_off = "rgb(110,110,110)"
-    line = "rgb(35,35,35)"
+    line = "rgb(36,36,36)"
+    lamp_on  = "rgb(34,197,94)"
+    lamp_off = "rgb(120,120,120)"
 
-    # NOT은 B를 쓰지 않음
     a_in, b_in = A, (B if gate!="NOT" else 0)
     Y = GATE_FUNCS[gate](a_in, b_in)
 
     fig = go.Figure()
 
-    # 입력 원 + 라벨
-    fig.add_shape(type="circle", x0=0.9, x1=1.5, y0=3.5, y1=4.1, line=dict(color=line, width=4))
-    fig.add_annotation(x=0.75, y=3.8, text=f"A={a_in}", showarrow=False, xanchor="right")
-    if gate != "NOT":
-        fig.add_shape(type="circle", x0=0.9, x1=1.5, y0=0.9, y1=1.5, line=dict(color=line, width=4))
-        fig.add_annotation(x=0.75, y=1.2, text=f"B={b_in}", showarrow=False, xanchor="right")
+    # 입력 포트(원 + 라벨)
+    def in_port(cx, cy, label, val, draw=True):
+        if draw:
+            fig.add_shape(type="circle", x0=cx-0.5, x1=cx+0.5, y0=cy-0.5, y1=cy+0.5,
+                          line=dict(color=line, width=4))
+            fig.add_annotation(x=cx-0.8, y=cy, text=f"{label}={val}", showarrow=False, xanchor="right")
 
-    # 배선
-    fig.add_shape(type="line", x0=1.5, y0=3.8, x1=2.6, y1=3.8, line=dict(color=line, width=4))
-    if gate != "NOT":
-        fig.add_shape(type="line", x0=1.5, y0=1.2, x1=2.6, y1=1.2, line=dict(color=line, width=4))
+    in_port(1.4, 4.4, "A", a_in, True)
+    in_port(1.4, 1.6, "B", b_in, gate!="NOT")
 
-    # 게이트 몸통
+    # 배선(입력→게이트)
+    fig.add_shape(type="line", x0=1.9, y0=4.4, x1=3.0, y1=4.4, line=dict(color=line, width=4))
+    if gate!="NOT":
+        fig.add_shape(type="line", x0=1.9, y0=1.6, x1=3.0, y1=1.6, line=dict(color=line, width=4))
+
+    # 몸통
     if gate in ["AND","NAND"]:
-        fig.add_shape(type="rect", x0=2.6, y0=0.8, x1=4.3, y1=4.2, line=dict(color=line, width=4))
-        fig.add_shape(type="path",  # 반원
-                      path="M 4.3 0.8 A 1.7 1.7 0 0 1 4.3 4.2 Z",
+        # ANSI AND: 직사각 + 반원
+        fig.add_shape(type="rect", x0=3.0, y0=1.0, x1=5.0, y1=5.0, line=dict(color=line, width=4))
+        # 반원(오른쪽)
+        fig.add_shape(type="path",
+                      path="M 5.0 1.0 A 2.0 2.0 0 0 1 5.0 5.0 Z",
                       line=dict(color=line, width=4), fillcolor="rgba(0,0,0,0)")
     elif gate in ["OR","XOR"]:
+        # 뒤 곡선(OR 뒷선)
+        fig.add_shape(type="path",
+                      path="M 3.0 1.0 Q 4.6 1.0 5.6 3.0 Q 4.6 5.0 3.0 5.0 Q 2.3 3.0 3.0 1.0 Z",
+                      line=dict(color=line, width=4), fillcolor="rgba(0,0,0,0)")
+        # 앞 곡선(입력쪽)
+        fig.add_shape(type="path",
+                      path="M 3.0 1.0 Q 2.4 3.0 3.0 5.0",
+                      line=dict(color=line, width=4))
+        # XOR은 추가 평행 곡선
         if gate == "XOR":
             fig.add_shape(type="path",
-                path="M 2.3 0.8 Q 1.9 2.5 2.3 4.2",
-                line=dict(color=line, width=2))
-        fig.add_shape(type="path",
-            path="M 2.6 0.8 Q 3.7 0.8 4.5 2.0 Q 3.7 3.2 2.6 4.2 Q 2.1 2.5 2.6 0.8 Z",
-            line=dict(color=line, width=4), fillcolor="rgba(0,0,0,0)")
+                          path="M 2.6 1.0 Q 2.0 3.0 2.6 5.0",
+                          line=dict(color=line, width=3))
     else:  # NOT
         fig.add_shape(type="path",
-            path="M 2.6 0.8 L 2.6 4.2 L 4.5 2.5 Z",
+            path="M 3.0 1.0 L 3.0 5.0 L 5.5 3.0 Z",
             line=dict(color=line, width=4), fillcolor="rgba(0,0,0,0)")
 
-    # 라벨
-    fig.add_annotation(x=3.55, y=2.5, text=gate, showarrow=False)
+    # 라벨(중앙)
+    fig.add_annotation(x=4.2, y=3.0, text=gate, showarrow=False)
 
-    # 인버터 버블 (NAND/NOT)
+    # 인버터 버블(NAND/NOT)
     need_bubble = gate in ["NAND","NOT"]
-    out_start_x = 4.7 if need_bubble else 4.5
+    out_from = 5.7 if need_bubble else 5.3
     if need_bubble:
-        fig.add_shape(type="circle", x0=4.52, x1=4.88, y0=2.32, y1=2.68, line=dict(color=line, width=4))
+        fig.add_shape(type="circle", x0=5.45, x1=5.95, y0=2.75, y1=3.25, line=dict(color=line, width=4))
 
     # 출력선
-    fig.add_shape(type="line", x0=out_start_x, y0=2.5, x1=6.0, y1=2.5, line=dict(color=line, width=4))
+    fig.add_shape(type="line", x0=out_from, y0=3.0, x1=7.2, y1=3.0, line=dict(color=line, width=4))
 
-    # LED (아이콘)
-    led_color = lamp_on if Y==1 else lamp_off
-    fig.add_shape(type="circle", x0=6.0, x1=7.0, y0=1.8, y1=3.2, line=dict(color=led_color, width=6))
-    fig.add_shape(type="circle", x0=6.08, x1=6.92, y0=1.88, y1=3.12, line=dict(color=led_color, width=0), fillcolor=led_color)
-    fig.add_shape(type="circle", x0=6.16, x1=6.34, y0=2.86, y1=3.04, line=dict(color="white", width=0), fillcolor="white")
-    fig.add_annotation(x=6.5, y=2.5, text=str(Y), font=dict(color="white"), showarrow=False)
+    # LED 아이콘
+    led = lamp_on if Y==1 else lamp_off
+    fig.add_shape(type="circle", x0=7.2, x1=8.2, y0=2.3, y1=3.7, line=dict(color=led, width=6))
+    fig.add_shape(type="circle", x0=7.28, x1=8.12, y0=2.38, y1=3.62, line=dict(color=led, width=0), fillcolor=led)
+    fig.add_shape(type="circle", x0=7.36, x1=7.56, y0=3.28, y1=3.48, line=dict(color="white", width=0), fillcolor="white")
+    fig.add_annotation(x=7.7, y=3.0, text=str(Y), font=dict(color="white"), showarrow=False)
 
-    # 축/여백
-    fig.update_xaxes(range=[0,8], visible=False)
-    fig.update_yaxes(range=[0,5], visible=False, scaleanchor="x", scaleratio=1)
-    fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=360)
+    # 축
+    fig.update_xaxes(range=[0,9], visible=False)
+    fig.update_yaxes(range=[0,6], visible=False, scaleanchor="x", scaleratio=1)
+    fig.update_layout(margin=dict(l=10,r=10,t=10,b=10), height=380)
 
     return fig, Y
 
-# ── 페이지 공통 UI ───────────────────────────────────────────────────────────
+# ── Sidebar ──────────────────────────────────────────────────────────────────
 st.sidebar.title("LogicLab: 게이트박스")
-page = st.sidebar.radio("페이지", ["게이트 참고(그림·진리표·부울식)","스위치 실습(게이트→LED)","타임라인(최대 10칸)"])
+page = st.sidebar.radio("페이지", ["스위치 실습(게이트→LED)","타임라인(최대 10칸)"])
 st.sidebar.caption("ⓘ 2학년 도제반 논리회로 도입/실습 확인용")
 
-# 세션값
+# 상태
 if "A" not in st.session_state: st.session_state.A = 0
 if "B" not in st.session_state: st.session_state.B = 0
 
-# ── 1) 게이트 참고 ───────────────────────────────────────────────────────────
-if page == "게이트 참고(그림·진리표·부울식)":
-    st.header("📘 게이트 참고 (그림 · 진리표 · 부울대수)")
-    gate = st.selectbox("게이트 선택", BASIC_GATES, index=1)  # 기본 AND
+# ── Page 1: Switch Lab ───────────────────────────────────────────────────────
+if page == "스위치 실습(게이트→LED)":
+    st.header("🧪 스위치 실습 (Gate → LED)")
+    gate = st.selectbox("Gate", GATES, index=1, key="lab_gate")
 
-    c1, c2 = st.columns([1.2, 1.0])
-    with c1:
-        # 고정 입력 예시(시각용) — AND는 (1,1), OR은 (1,0), NOT은 A=1
-        A_ex = 1
-        B_ex = 1 if gate not in ["NOT","OR","XOR","NAND"] else 0
-        # 그림
-        fig, Y = gate_figure(gate, A_ex, B_ex)
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
-
-        st.subheader("Boolean Algebra")
-        st.latex(BOOL_TEX[gate])
-
-    with c2:
-        st.subheader("Truth Table")
-        st.dataframe(truth_table(gate), use_container_width=True, hide_index=True)
-
-# ── 2) 스위치 실습 ───────────────────────────────────────────────────────────
-elif page == "스위치 실습(게이트→LED)":
-    st.header("🧪 스위치 실습 (게이트 → LED)")
-    gate = st.selectbox("게이트 선택", BASIC_GATES, index=1, key="lab_gate")
-
-    left, mid, right = st.columns([0.6, 1.4, 0.8])
+    left, mid, right = st.columns([0.55, 1.45, 0.9])
 
     with left:
         st.subheader("입력 스위치")
         st.session_state.A = 1 if st.toggle("A", value=bool(st.session_state.A), key="sw_A") else 0
-        # NOT이면 B 비활성 안내
         if gate == "NOT":
+            B_val = 0
             st.toggle("B (NOT에서는 사용 안 함)", value=False, disabled=True)
-            b_val = 0
         else:
             st.session_state.B = 1 if st.toggle("B", value=bool(st.session_state.B), key="sw_B") else 0
-            b_val = st.session_state.B
+            B_val = st.session_state.B
         st.caption("스위치를 바꾸면 도면의 LED가 켜지거나 꺼집니다.")
 
     with mid:
-        fig, Y = gate_figure(gate, st.session_state.A, b_val)
+        fig, Y = gate_figure(gate, st.session_state.A, B_val)
         st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
 
     with right:
         st.subheader("현재 상태")
         st.metric("A", st.session_state.A)
         if gate != "NOT":
-            st.metric("B", b_val)
+            st.metric("B", B_val)
         st.metric("Y", Y)
+
+        st.subheader("Boolean Algebra")
+        st.latex(BOOL_TEX[gate])
+
         st.subheader("Truth Table")
         st.dataframe(truth_table(gate), use_container_width=True, hide_index=True)
 
-# ── 3) 타임라인(최대 10칸) ───────────────────────────────────────────────────
+# ── Page 2: Timeline ─────────────────────────────────────────────────────────
 else:
     st.header("🕒 타임라인 (칸을 클릭해 0/1 토글) — 최대 10칸")
-    gate = st.selectbox("게이트 선택", BASIC_GATES, index=4, key="tl_gate")  # 기본 XOR
+    gate = st.selectbox("Gate", GATES, index=4, key="tl_gate")  # 기본 XOR
     n = st.slider("샘플 길이(칸 수)", 4, 10, 10, step=1)
 
     if "A_seq" not in st.session_state or len(st.session_state.A_seq)!=n:
@@ -220,17 +209,13 @@ else:
     B_w = np.array(st.session_state.B_seq, dtype=int)
     Y_w = np.array([GATE_FUNCS[gate](int(a), int(b)) for a, b in zip(A_w, B_w)])
 
-    # 3개 트랙(위에서부터 A/B/Y), 각 트랙 y축은 0/1로 표시
+    # 3트랙(A,B,Y), 0/1 눈금
     fig, axes = plt.subplots(nrows=3, ncols=1, figsize=(9,4.8), sharex=True)
     t = np.arange(n)
-
     axes[0].step(t, A_w, where="post"); axes[0].set_ylabel("A"); axes[0].set_yticks([0,1]); axes[0].set_ylim(-0.2,1.2)
     axes[1].step(t, B_w, where="post"); axes[1].set_ylabel("B"); axes[1].set_yticks([0,1]); axes[1].set_ylim(-0.2,1.2)
     axes[2].step(t, Y_w, where="post"); axes[2].set_ylabel("Y"); axes[2].set_yticks([0,1]); axes[2].set_ylim(-0.2,1.2)
-    axes[2].set_xlabel("샘플(0..{})".format(n-1))
-
-    for ax in axes:
-        ax.grid(True, linestyle="--", alpha=0.3)
-
+    axes[2].set_xlabel(f"샘플(0..{n-1})")
+    for ax in axes: ax.grid(True, linestyle="--", alpha=0.3)
     plt.xticks(t)
     st.pyplot(fig, use_container_width=True)
