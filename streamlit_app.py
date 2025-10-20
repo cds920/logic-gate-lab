@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
-from random import choice, randint
 
 st.set_page_config(page_title="LogicLab: 게이트박스", page_icon="🔌", layout="wide")
 
@@ -43,10 +42,6 @@ def truth_table(gate: str) -> pd.DataFrame:
 
 # ── 게이트 도면(표준 느낌) + LED ─────────────────────────────────────────────
 def gate_figure(gate: str, A: int, B: int):
-    """
-    좌표: x 0..9, y 0..6  (비율 고정)
-    표준 심볼 느낌의 게이트 + LED 출력
-    """
     line = "rgb(36,36,36)"
     lamp_on  = "rgb(34,197,94)"
     lamp_off = "rgb(120,120,120)"
@@ -66,7 +61,7 @@ def gate_figure(gate: str, A: int, B: int):
     in_port(1.4, 4.4, "A", a_in, True)
     in_port(1.4, 1.6, "B", b_in, gate!="NOT")
 
-    # 배선(입력→게이트)
+    # 배선
     fig.add_shape(type="line", x0=1.9, y0=4.4, x1=3.0, y1=4.4, line=dict(color=line, width=4))
     if gate!="NOT":
         fig.add_shape(type="line", x0=1.9, y0=1.6, x1=3.0, y1=1.6, line=dict(color=line, width=4))
@@ -96,7 +91,7 @@ def gate_figure(gate: str, A: int, B: int):
     # 라벨
     fig.add_annotation(x=4.2, y=3.0, text=gate, showarrow=False)
 
-    # 인버터 버블(NAND/NOT)
+    # 인버터 버블
     need_bubble = gate in ["NAND","NOT"]
     out_from = 5.7 if need_bubble else 5.3
     if need_bubble:
@@ -112,28 +107,39 @@ def gate_figure(gate: str, A: int, B: int):
     fig.add_shape(type="circle", x0=7.36, x1=7.56, y0=3.28, y1=3.48, line=dict(color="white", width=0), fillcolor="white")
     fig.add_annotation(x=7.7, y=3.0, text=str(Y), font=dict(color="white"), showarrow=False)
 
-    # 축
     fig.update_xaxes(range=[0,9], visible=False)
     fig.update_yaxes(range=[0,6], visible=False, scaleanchor="x", scaleratio=1)
-    fig.update_layout(margin=dict(l=10,r=10,t=10,b=10), height=360)
-
+    fig.update_layout(margin=dict(l=10,r=10,t=10,b=10), height=330)
     return fig, Y
 
-# ── 유틸: 파형 그리기 ────────────────────────────────────────────────────────
+# ── 파형 + 토글(정렬 맞춤) ───────────────────────────────────────────────────
 def plot_track(values, label, n):
-    fig = plt.figure(figsize=(9,1.6))
+    fig = plt.figure(figsize=(7.2, 1.15))   # 작게
     t = np.arange(n)
     plt.step(t, values, where="post")
-    plt.yticks([0,1], [0,1])
+    plt.yticks([0,1], [0,1], fontsize=10)
     plt.ylim(-0.2,1.2)
-    plt.ylabel(label)
+    plt.ylabel(label, rotation=0, labelpad=20, fontsize=12)
     plt.grid(True, linestyle="--", alpha=0.3)
-    plt.xticks(t)
+    plt.xticks(t, fontsize=10)
+    # 아래 토글과 수직 정렬 위해 좌우 여백 고정
+    plt.subplots_adjust(left=0.115, right=0.985, top=0.88, bottom=0.22)
     return fig
+
+def render_toggle_row(seq, n, key_prefix, left_pad=0.115, right_pad=0.015):
+    # 그래프 좌/우 여백과 동일한 비율로 패딩 컬럼 추가
+    weights = [left_pad] + [1.0]*n + [right_pad]
+    cols = st.columns(weights, gap="small")
+    for i in range(n):
+        with cols[i+1]:
+            lab = "●" if seq[i]==1 else "○"
+            if st.button(lab, key=f"{key_prefix}_{i}"):
+                seq[i] = 1 - seq[i]
+    return seq
 
 # ── 사이드바 ─────────────────────────────────────────────────────────────────
 st.sidebar.title("LogicLab: 게이트박스")
-page = st.sidebar.radio("페이지", ["스위치 실습(게이트→LED)","타임라인(최대 10칸)","퀴즈(5문제)"])
+page = st.sidebar.radio("페이지", ["스위치 실습(게이트→LED)","타임라인(최대 10칸)"])
 st.sidebar.caption("ⓘ 2학년 도제반 논리회로 도입/실습 확인용")
 
 # 상태값
@@ -146,7 +152,6 @@ if page == "스위치 실습(게이트→LED)":
     gate = st.selectbox("Gate", GATES, index=1, key="lab_gate")
 
     left, mid, right = st.columns([0.55, 1.45, 0.9])
-
     with left:
         st.subheader("입력 스위치")
         st.session_state.A = 1 if st.toggle("A", value=bool(st.session_state.A), key="sw_A") else 0
@@ -180,186 +185,31 @@ if page == "스위치 실습(게이트→LED)":
         st.dataframe(truth_table(gate), use_container_width=True, hide_index=True)
 
 # ── Page 2: 타임라인 ─────────────────────────────────────────────────────────
-elif page == "타임라인(최대 10칸)":
+else:
     st.header("🕒 타임라인 — A/B/Y (최대 10칸)")
     gate = st.selectbox("Gate", GATES, index=4, key="tl_gate")  # 기본 XOR
     n = st.slider("샘플 길이(칸 수)", 4, 10, 10, step=1)
 
+    # 시퀀스 초기화
     if "A_seq" not in st.session_state or len(st.session_state.A_seq)!=n:
         st.session_state.A_seq = [0]*n
     if "B_seq" not in st.session_state or len(st.session_state.B_seq)!=n:
         st.session_state.B_seq = [0]*n
 
-    # A 트랙: 그래프 → 버튼(그래프 바로 아래, 같은 폭으로)
+    # A: 그래프 → 토글(수직 정렬)
     st.subheader("A")
     st.pyplot(plot_track(np.array(st.session_state.A_seq), "A", n), use_container_width=True)
-    cols = st.columns(n, gap="small")
-    for i, c in enumerate(cols):
-        lab = "●" if st.session_state.A_seq[i]==1 else "○"
-        if c.button(lab, key=f"TA_{i}"):
-            st.session_state.A_seq[i] = 1 - st.session_state.A_seq[i]
+    st.session_state.A_seq = render_toggle_row(st.session_state.A_seq, n, "tl_A")
 
-    # B 트랙
+    # B: 그래프 → 토글
     st.subheader("B")
     st.pyplot(plot_track(np.array(st.session_state.B_seq), "B", n), use_container_width=True)
-    cols = st.columns(n, gap="small")
-    for i, c in enumerate(cols):
-        lab = "●" if st.session_state.B_seq[i]==1 else "○"
-        if c.button(lab, key=f"TB_{i}"):
-            st.session_state.B_seq[i] = 1 - st.session_state.B_seq[i]
+    st.session_state.B_seq = render_toggle_row(st.session_state.B_seq, n, "tl_B")
 
-    # Y 트랙(계산 결과)
+    # Y: 계산 결과(토글 없음)
     A_w = np.array(st.session_state.A_seq, dtype=int)
     B_w = np.array(st.session_state.B_seq, dtype=int)
     Y_w = np.array([GATE_FUNCS[gate](int(a), int(b)) for a, b in zip(A_w, B_w)])
 
     st.subheader("Y")
     st.pyplot(plot_track(Y_w, "Y", n), use_container_width=True)
-
-# ── Page 3: 퀴즈(5문제) ──────────────────────────────────────────────────────
-else:
-    st.header("🧩 퀴즈 — 총 5문제")
-
-    # 세션 상태
-    if "quiz_qidx" not in st.session_state:
-        st.session_state.quiz_qidx = 0
-        st.session_state.quiz_score = 0
-        st.session_state.quiz_data = {}
-
-    def reset_quiz():
-        st.session_state.quiz_qidx = 0
-        st.session_state.quiz_score = 0
-        st.session_state.quiz_data = {}
-
-    colx, coly = st.columns([0.9,0.1])
-    with coly:
-        if st.button("다시 시작"):
-            reset_quiz()
-
-    qidx = st.session_state.quiz_qidx
-
-    # ----- 문제 생성기 -----
-    def gen_inputs(n=8):
-        return [randint(0,1) for _ in range(n)]
-
-    def draw_small_gate(g):
-        # 시드 입력(보여주기용)
-        fig, _ = gate_figure(g, 1, 1)
-        return fig
-
-    # 문제1: 게이트 그림 보고 이름 고르기(선다)
-    def render_q1():
-        gate = choice(GATES)
-        st.session_state.quiz_data["A"] = gate
-        st.subheader("Q1) 아래 **게이트 그림**은 무엇일까요?")
-        st.plotly_chart(draw_small_gate(gate), use_container_width=True, config={"displayModeBar": False})
-        ans = st.radio("정답 선택", GATES, key="q1_sel", horizontal=True)
-        if st.button("정답 확인", key="q1_check"):
-            if ans == gate:
-                st.success("정답!")
-                st.session_state.quiz_score += 1
-            else:
-                st.error(f"오답 😢  정답: {gate}")
-            st.session_state.quiz_qidx += 1
-
-    # 문제2: 진리표 보고 이름 고르기(선다)
-    def render_q2():
-        gate = choice(GATES)
-        st.session_state.quiz_data["B"] = gate
-        st.subheader("Q2) 아래 **진리표**의 게이트는 무엇일까요?")
-        st.dataframe(truth_table(gate), use_container_width=True, hide_index=True)
-        ans = st.radio("정답 선택", GATES, key="q2_sel", horizontal=True)
-        if st.button("정답 확인", key="q2_check"):
-            if ans == gate:
-                st.success("정답!")
-                st.session_state.quiz_score += 1
-            else:
-                st.error(f"오답 😢  정답: {gate}")
-            st.session_state.quiz_qidx += 1
-
-    # 문제3: 게이트와 입력값 보고 출력값이 1인지 O/X
-    def render_q3():
-        gate = choice(GATES)
-        A = randint(0,1)
-        B = 0 if gate=="NOT" else randint(0,1)
-        Y = GATE_FUNCS[gate](A,B)
-        st.subheader("Q3) **게이트와 입력값**이 주어졌을 때, 출력이 1인가요?")
-        st.write(f"Gate: **{gate}**,  A={A}{'' if gate=='NOT' else f',  B={B}'}")
-        ans = st.radio("출력이 1인가?", ["O","X"], key="q3_sel", horizontal=True)
-        if st.button("정답 확인", key="q3_check"):
-            ok = ("O" if Y==1 else "X")
-            if ans == ok:
-                st.success("정답!")
-                st.session_state.quiz_score += 1
-            else:
-                st.error(f"오답 😢  정답: {ok} (출력={Y})")
-            st.session_state.quiz_qidx += 1
-
-    # 문제4: 입력 타임라인 → 출력 타임라인 그리기
-    def render_q4():
-        gate = choice(GATES)
-        n = 8
-        A = gen_inputs(n)
-        B = [0]*n if gate=="NOT" else gen_inputs(n)
-        Y = [GATE_FUNCS[gate](a,b) for a,b in zip(A,B)]
-        st.subheader("Q4) **입력 타임라인**이 주어졌을 때, **출력 Y**를 직접 그려보세요.")
-        st.write(f"Gate: **{gate}**")
-        # 입력 그래프
-        st.pyplot(plot_track(np.array(A), "A", n), use_container_width=True)
-        if gate!="NOT":
-            st.pyplot(plot_track(np.array(B), "B", n), use_container_width=True)
-        # 답안 입력 버튼(Y)
-        if "q4_ans" not in st.session_state or len(st.session_state.q4_ans)!=n:
-            st.session_state.q4_ans = [0]*n
-        st.markdown("#### Y를 눌러 0/1 토글")
-        cols = st.columns(n, gap="small")
-        for i,c in enumerate(cols):
-            lab = "●" if st.session_state.q4_ans[i]==1 else "○"
-            if c.button(lab, key=f"q4_{i}"):
-                st.session_state.q4_ans[i] = 1 - st.session_state.q4_ans[i]
-        # 제출
-        if st.button("정답 확인", key="q4_check"):
-            if st.session_state.q4_ans == Y:
-                st.success("정답!")
-                st.session_state.quiz_score += 1
-            else:
-                st.error("오답 😢  정답 파형을 아래에 보여줍니다.")
-                st.pyplot(plot_track(np.array(Y), "정답 Y", n), use_container_width=True)
-            st.session_state.quiz_qidx += 1
-
-    # 문제5: 출력 타임라인만 보고 입력 타임라인 그리기
-    # ※ 여러 해가 존재하는 문제를 피하려고 **NOT**으로만 출제(결정적 해 존재)
-    def render_q5():
-        gate = "NOT"
-        n = 8
-        A = gen_inputs(n)
-        Y = [GATE_FUNCS[gate](a,0) for a in A]  # Y = NOT A
-        st.subheader("Q5) **출력 타임라인(Y)** 만 보고, **입력 A**를 그리세요. (게이트: NOT)")
-        st.pyplot(plot_track(np.array(Y), "Y", n), use_container_width=True)
-        if "q5_ans" not in st.session_state or len(st.session_state.q5_ans)!=n:
-            st.session_state.q5_ans = [0]*n
-        st.markdown("#### A를 눌러 0/1 토글")
-        cols = st.columns(n, gap="small")
-        for i,c in enumerate(cols):
-            lab = "●" if st.session_state.q5_ans[i]==1 else "○"
-            if c.button(lab, key=f"q5_{i}"):
-                st.session_state.q5_ans[i] = 1 - st.session_state.q5_ans[i]
-        if st.button("정답 확인", key="q5_check"):
-            if st.session_state.q5_ans == A:
-                st.success("정답!")
-                st.session_state.quiz_score += 1
-            else:
-                st.error("오답 😢  정답 파형을 아래에 보여줍니다.")
-                st.pyplot(plot_track(np.array(A), "정답 A", n), use_container_width=True)
-            st.session_state.quiz_qidx += 1
-
-    # ----- 문제 진행 -----
-    if qidx == 0:   render_q1()
-    elif qidx == 1: render_q2()
-    elif qidx == 2: render_q3()
-    elif qidx == 3: render_q4()
-    elif qidx == 4: render_q5()
-    else:
-        st.success(f"퀴즈 완료! 점수: **{st.session_state.quiz_score}/5**")
-        if st.button("다시 시작하기"):
-            reset_quiz()
