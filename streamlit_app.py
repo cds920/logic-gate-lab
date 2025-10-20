@@ -13,41 +13,49 @@ st.set_page_config(page_title="LogicLab: 게이트박스", page_icon="🔌", lay
 PRIMARY   = "#4F46E5"   # indigo-600
 SECONDARY = "#06B6D4"   # cyan-500
 ACCENT    = "#22C55E"   # green-500
-WARNING   = "#F59E0B"   # amber-500
 MUTED     = "#94A3B8"   # slate-400
 INK       = "#24272e"   # dark ink
 
 st.markdown(
     f"""
     <style>
-      /* 전체 최대폭 */
       .block-container {{max-width: 1180px;}}
-      /* 헤더 영역: 그라디언트 배경 */
+
+      /* Header (gradient) */
       .app-header {{
         background: linear-gradient(90deg, {PRIMARY} 0%, {SECONDARY} 100%);
         padding: 18px 22px; border-radius: 20px; color: white;
         box-shadow: 0 10px 28px rgba(79,70,229,.25);
+        margin-bottom: 16px;
       }}
       .app-header h1 {{margin: 0; font-size: 28px; font-weight: 800; letter-spacing:.2px}}
       .app-sub {{opacity:.9; font-size:14px; margin-top:4px}}
-      /* 카드 느낌 */
+
+      /* Card */
       .card {{
         background: #ffffff; border-radius: 16px; padding: 18px 18px;
         box-shadow: 0 10px 24px rgba(15,23,42,.08); border: 1px solid #eef2ff;
+        margin-top: 14px;
       }}
-      /* Truth table 스타일 */
+
+      /* Dataframe font */
       table.dataframe td, table.dataframe th {{font-size:14px}}
-      /* 버튼(토글) 공통 라운드 */
+
+      /* ▼ 버튼 사이 간격 시각적 축소(패딩/폰트/최소폭 ↓) */
       .stButton>button {{
-        border-radius: 14px; border: 1px solid #e2e8f0;
-        padding: 6px 10px; font-size:16px;
+        border-radius: 10px; border: 1px solid #e2e8f0;
+        padding: 4px 8px;                 /* 기존보다 타이트 */
+        font-size: 15px;                  /* 약간 축소 */
+        min-width: 34px;                  /* 최소 폭 ↓ */
+        line-height: 1.1;
         background: #ffffff;
         transition: all .15s ease;
       }}
       .stButton>button:hover {{transform: translateY(-1px); box-shadow:0 8px 18px rgba(2,6,23,.06)}}
-      /* 토글(스위치) */
+
       .stToggle label span {{font-weight:700}}
-      /* 사이드바 그라디언트 라벨 */
+
+      /* Sidebar title gradient */
       section[data-testid="stSidebar"] .sidebar-title {{
         background: linear-gradient(90deg, {PRIMARY}, {SECONDARY});
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
@@ -58,7 +66,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# App header
+# Header
 st.markdown(
     """
     <div class="app-header">
@@ -87,7 +95,6 @@ GATE_FUNCS = {
 }
 GATES = ["NOT","AND","OR","NAND","XOR"]
 
-# Boolean algebra (Korean, overline)
 BOOL_TEX = {
     "NOT":  r"Y=\overline{A}",
     "AND":  r"Y=A\cdot B",
@@ -133,13 +140,11 @@ def gate_figure(gate: str, A: int, B: int):
     in_port(1.4, 4.4, "A", a_in, True)
     in_port(1.4, 1.6, "B", b_in, gate!="NOT")
 
-    # Wires (slightly colored)
     wire_color = "#475569"
     fig.add_shape(type="line", x0=1.9, y0=4.4, x1=3.0, y1=4.4, line=dict(color=wire_color, width=4))
     if gate!="NOT":
         fig.add_shape(type="line", x0=1.9, y0=1.6, x1=3.0, y1=1.6, line=dict(color=wire_color, width=4))
 
-    # Body
     if gate in ["AND","NAND"]:
         fig.add_shape(type="rect", x0=3.0, y0=1.0, x1=5.0, y1=5.0, line=dict(color=line, width=4))
         fig.add_shape(type="path",
@@ -167,18 +172,16 @@ def gate_figure(gate: str, A: int, B: int):
     need_bubble = gate in ["NAND","NOT"]
     out_from = 5.7 if need_bubble else 5.3
     if need_bubble:
-        fig.add_shape(type="circle", x0=5.45, x1=5.95, y0=2.75, y1=3.25, line=dict(color=line, width=4), fillcolor="white")
+        fig.add_shape(type="circle", x0=5.45, x1=5.95, y0=2.75, y1=3.25,
+                      line=dict(color=line, width=4), fillcolor="white")
 
-    # Output wire
     fig.add_shape(type="line", x0=out_from, y0=3.0, x1=7.2, y1=3.0, line=dict(color=wire_color, width=4))
 
-    # LED + glow
+    # LED glow
     led = lamp_on if Y==1 else lamp_off
-    # glow circle (bigger, translucent)
     fig.add_shape(type="circle", x0=7.0, x1=8.4, y0=2.1, y1=3.9,
                   line=dict(color="rgba(0,0,0,0)", width=0),
                   fillcolor=("rgba(34,197,94,.20)" if Y==1 else "rgba(148,163,184,.15)"))
-    # body
     fig.add_shape(type="circle", x0=7.2, x1=8.2, y0=2.3, y1=3.7, line=dict(color=led, width=6))
     fig.add_shape(type="circle", x0=7.28, x1=8.12, y0=2.38, y1=3.62, line=dict(color=led, width=0), fillcolor=led)
     fig.add_shape(type="circle", x0=7.36, x1=7.56, y0=3.28, y1=3.48, line=dict(color="white", width=0), fillcolor="white")
@@ -192,6 +195,12 @@ def gate_figure(gate: str, A: int, B: int):
 # ─────────────────────────────────────────────────────────────────────────────
 # Timeline plot + toggle row (alignment tuned)
 # ─────────────────────────────────────────────────────────────────────────────
+# 정렬 파라미터(그래프 left/right와 토글 left_pad/right_pad를 반드시 동일하게!)
+ALIGN_LEFT  = 0.160   # 더 오른쪽으로 보이도록 왼쪽 여백 확대
+ALIGN_RIGHT = 0.995
+PAD_LEFT    = 0.160
+PAD_RIGHT   = 0.005
+
 def plot_track(values, label, n, color="#3B82F6"):
     fig = plt.figure(figsize=(7.2, 1.15))
     t = np.arange(n)
@@ -201,13 +210,14 @@ def plot_track(values, label, n, color="#3B82F6"):
     plt.ylabel(label, rotation=0, labelpad=20, fontsize=12)
     plt.grid(True, linestyle="--", alpha=0.25)
     plt.xticks(t, fontsize=10)
-    # 그래프·토글 수직정렬(왼쪽 여백 살짝 크게 → 토글이 오른쪽으로 정렬됨)
-    plt.subplots_adjust(left=0.135, right=0.992, top=0.88, bottom=0.22)
+    # 그래프·토글 수직정렬 (아래 토글과 동일 수치)
+    plt.subplots_adjust(left=ALIGN_LEFT, right=ALIGN_RIGHT, top=0.88, bottom=0.22)
     return fig
 
-def render_toggle_row(seq, n, key_prefix, emoji_on="🔵", emoji_off="⚪", left_pad=0.135, right_pad=0.008):
+def render_toggle_row(seq, n, key_prefix, emoji_on="🔵", emoji_off="⚪",
+                      left_pad=PAD_LEFT, right_pad=PAD_RIGHT):
     weights = [left_pad] + [1.0]*n + [right_pad]
-    cols = st.columns(weights, gap="small")
+    cols = st.columns(weights, gap="small")  # gap 더 줄일 수 없어서 버튼 자체 패딩↓로 보정
     for i in range(n):
         with cols[i+1]:
             lab = emoji_on if seq[i]==1 else emoji_off
