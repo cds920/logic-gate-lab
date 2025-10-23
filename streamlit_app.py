@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
+from pandas.io.formats.style import Styler  # ★ pandas Styler 명시 import
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Page config + Global style
@@ -44,9 +45,9 @@ st.markdown(
       /* ▼ 버튼 사이 간격 시각적 축소(패딩/폰트/최소폭 ↓) */
       .stButton>button {{
         border-radius: 10px; border: 1px solid #e2e8f0;
-        padding: 4px 8px;                 /* 기존보다 타이트 */
-        font-size: 15px;                  /* 약간 축소 */
-        min-width: 34px;                  /* 최소 폭 ↓ */
+        padding: 4px 8px;
+        font-size: 15px;
+        min-width: 34px;
         line-height: 1.1;
         background: #ffffff;
         transition: all .15s ease;
@@ -103,22 +104,34 @@ BOOL_TEX = {
     "XOR":  r"Y=\overline{A}\,B + A\,\overline{B}",
 }
 
-def truth_table(gate: str, a_sel=None, b_sel=None) -> pd.io.formats.style.Styler:
+# pandas 버전 호환: index 숨기기 유틸
+def _hide_index(styler: Styler) -> Styler:
+    try:
+        return styler.hide(axis="index")  # pandas >= 1.4
+    except Exception:
+        return styler.hide_index()        # pandas < 1.4
+
+def truth_table(gate: str, a_sel=None, b_sel=None) -> Styler:
     if gate == "NOT":
         df = pd.DataFrame([{"A":0,"Y":GATE_FUNCS["NOT"](0,0)},
                            {"A":1,"Y":GATE_FUNCS["NOT"](1,0)}])
-        return df.style.hide(axis="index")
+        return _hide_index(df.style)
     rows = [{"A":a,"B":b,"Y":GATE_FUNCS[gate](a,b)} for a in [0,1] for b in [0,1]]
     df = pd.DataFrame(rows)
+
     def _hl(row):
         if a_sel is not None and b_sel is not None and row["A"]==a_sel and row["B"]==b_sel:
             return ["background-color:#EEF2FF"]*len(row)
         return [""]*len(row)
-    return df.style.apply(_hl, axis=1).hide(axis="index")
+
+    return _hide_index(df.style.apply(_hl, axis=1))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Gate drawing (Plotly) with LED glow
 # ─────────────────────────────────────────────────────────────────────────────
+INK = "#24272e"
+ACCENT = "#22C55E"
+
 def gate_figure(gate: str, A: int, B: int):
     line = INK
     lamp_on  = ACCENT
@@ -195,8 +208,7 @@ def gate_figure(gate: str, A: int, B: int):
 # ─────────────────────────────────────────────────────────────────────────────
 # Timeline plot + toggle row (alignment tuned)
 # ─────────────────────────────────────────────────────────────────────────────
-# 정렬 파라미터(그래프 left/right와 토글 left_pad/right_pad를 반드시 동일하게!)
-ALIGN_LEFT  = 0.160   # 더 오른쪽으로 보이도록 왼쪽 여백 확대
+ALIGN_LEFT  = 0.160   # 그래프/토글 좌우 정렬 파라미터
 ALIGN_RIGHT = 0.995
 PAD_LEFT    = 0.160
 PAD_RIGHT   = 0.005
@@ -210,14 +222,13 @@ def plot_track(values, label, n, color="#3B82F6"):
     plt.ylabel(label, rotation=0, labelpad=20, fontsize=12)
     plt.grid(True, linestyle="--", alpha=0.25)
     plt.xticks(t, fontsize=10)
-    # 그래프·토글 수직정렬 (아래 토글과 동일 수치)
     plt.subplots_adjust(left=ALIGN_LEFT, right=ALIGN_RIGHT, top=0.88, bottom=0.22)
     return fig
 
 def render_toggle_row(seq, n, key_prefix, emoji_on="🔵", emoji_off="⚪",
                       left_pad=PAD_LEFT, right_pad=PAD_RIGHT):
     weights = [left_pad] + [1.0]*n + [right_pad]
-    cols = st.columns(weights, gap="small")  # gap 더 줄일 수 없어서 버튼 자체 패딩↓로 보정
+    cols = st.columns(weights, gap="small")
     for i in range(n):
         with cols[i+1]:
             lab = emoji_on if seq[i]==1 else emoji_off
