@@ -208,30 +208,26 @@ def gate_figure(gate: str, A: int, B: int):
 # ─────────────────────────────────────────────────────────────────────────────
 # Timeline plot + toggle row (perfect alignment)
 # ─────────────────────────────────────────────────────────────────────────────
-# 그래프 내부 축 영역 비율(0~1). 이 값과 정확히 같은 비율을 버튼 레이아웃에도 사용.
-ALIGN_LEFT  = 0.18      # ← 필요하면 여기 숫자만 미세조정
+ALIGN_LEFT  = 0.02     # 그래프 자체 좌·우 여백 최소화
 ALIGN_RIGHT = 0.98
-
-# 버튼 레이아웃 패딩을 그래프와 '같은' 비율로 맞춘다.
-PAD_LEFT  = ALIGN_LEFT
-PAD_RIGHT = 1.0 - ALIGN_RIGHT
+PAD_LEFT    = 0.0      # 버튼 좌우 패딩은 0으로 (그래프와 같은 시작점)
+PAD_RIGHT   = 0.0
 
 def plot_track(values, label, n, color="#3B82F6"):
     fig = plt.figure(figsize=(7.2, 1.15))
     t = np.arange(n)
     plt.step(t, values, where="post", linewidth=2.2, color=color)
-    plt.yticks([0,1], [0,1], fontsize=10)
-    plt.ylim(-0.2,1.2)
-    plt.ylabel(label, rotation=0, labelpad=20, fontsize=12)
-    plt.grid(True, linestyle="--", alpha=0.25)
+    # y축 라벨/눈금 제거 → 왼쪽 여백 제거
+    plt.yticks([])                    # ← y축 숫자 숨김
+    plt.ylim(-0.2, 1.2)
+    plt.grid(True, linestyle="--", alpha=0.25, axis="y")
     plt.xticks(t, fontsize=10)
-    # 축(0~n-1)이 차지하는 가로 영역을 정확히 명시
+    # 그래프의 데이터 영역이 컬럼 시작점과 정확히 일치
     plt.subplots_adjust(left=ALIGN_LEFT, right=ALIGN_RIGHT, top=0.88, bottom=0.22)
     return fig
 
 def render_toggle_row(seq, n, key_prefix, emoji_on="🔵", emoji_off="⚪",
                       left_pad=PAD_LEFT, right_pad=PAD_RIGHT):
-    # 그래프의 left/right와 '같은' 비율을 써서 첫 버튼이 x=0 아래에 오게 함
     weights = [left_pad] + [1.0]*n + [right_pad]
     cols = st.columns(weights, gap="small")
     for i in range(n):
@@ -240,6 +236,7 @@ def render_toggle_row(seq, n, key_prefix, emoji_on="🔵", emoji_off="⚪",
             if st.button(lab, key=f"{key_prefix}_{i}"):
                 seq[i] = 1 - seq[i]
     return seq
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Sidebar
@@ -312,21 +309,32 @@ else:
     if "B_seq" not in st.session_state or len(st.session_state.B_seq)!=n:
         st.session_state.B_seq = [0]*n
 
-    # A: blue
-    st.subheader("A")
-    st.pyplot(plot_track(np.array(st.session_state.A_seq), "A", n, color="#3B82F6"), use_container_width=True)
-    st.session_state.A_seq = render_toggle_row(st.session_state.A_seq, n, "tl_A", emoji_on="🔵", emoji_off="⚪")
+    LABEL_COL = 0.06  # 왼쪽 A/B 레이블 폭 (원하면 0.05~0.08에서 미세조정)
 
-    # B: orange
-    st.subheader("B")
-    st.pyplot(plot_track(np.array(st.session_state.B_seq), "B", n, color="#F59E0B"), use_container_width=True)
-    st.session_state.B_seq = render_toggle_row(st.session_state.B_seq, n, "tl_B", emoji_on="🟠", emoji_off="⚪")
+    # A 행
+    col_lab, col_body = st.columns([LABEL_COL, 1-LABEL_COL])
+    with col_lab:
+        st.markdown("### A")   # 레이블을 그래프 바깥에 둠(그래프 시작점에 영향 X)
+    with col_body:
+        st.pyplot(plot_track(np.array(st.session_state.A_seq), "A", n, color="#3B82F6"), use_container_width=True)
+        st.session_state.A_seq = render_toggle_row(st.session_state.A_seq, n, "tl_A", emoji_on="🔵", emoji_off="⚪")
 
-    # Y: green (computed)
+    # B 행
+    col_lab, col_body = st.columns([LABEL_COL, 1-LABEL_COL])
+    with col_lab:
+        st.markdown("### B")
+    with col_body:
+        st.pyplot(plot_track(np.array(st.session_state.B_seq), "B", n, color="#F59E0B"), use_container_width=True)
+        st.session_state.B_seq = render_toggle_row(st.session_state.B_seq, n, "tl_B", emoji_on="🟠", emoji_off="⚪")
+
+    # Y 행 (계산 결과)
     A_w = np.array(st.session_state.A_seq, dtype=int)
     B_w = np.array(st.session_state.B_seq, dtype=int)
     Y_w = np.array([GATE_FUNCS[gate](int(a), int(b)) for a, b in zip(A_w, B_w)])
 
-    st.subheader("Y")
-    st.pyplot(plot_track(Y_w, "Y", n, color="#22C55E"), use_container_width=True)
+    col_lab, col_body = st.columns([LABEL_COL, 1-LABEL_COL])
+    with col_lab:
+        st.markdown("### Y")
+    with col_body:
+        st.pyplot(plot_track(Y_w, "Y", n, color="#22C55E"), use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
