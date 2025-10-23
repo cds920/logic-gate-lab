@@ -208,10 +208,11 @@ def gate_figure(gate: str, A: int, B: int):
 # ─────────────────────────────────────────────────────────────────────────────
 # Timeline plot + toggle row (alignment tuned)
 # ─────────────────────────────────────────────────────────────────────────────
-ALIGN_LEFT  = 0.160   # 그래프/토글 좌우 정렬 파라미터
-ALIGN_RIGHT = 0.995
-PAD_LEFT    = 0.160
-PAD_RIGHT   = 0.005
+# 좌우 패딩 및 정렬 파라미터 (그래프와 토글이 시각적으로 일치하도록 조정)
+ALIGN_LEFT  = 0.135   # 왼쪽 여백 약간 줄이기
+ALIGN_RIGHT = 0.985
+PAD_LEFT    = 0.09    # 그래프보다 약간 좁게 설정해야 시각적으로 맞음
+PAD_RIGHT   = 0.01
 
 def plot_track(values, label, n, color="#3B82F6"):
     fig = plt.figure(figsize=(7.2, 1.15))
@@ -222,11 +223,13 @@ def plot_track(values, label, n, color="#3B82F6"):
     plt.ylabel(label, rotation=0, labelpad=20, fontsize=12)
     plt.grid(True, linestyle="--", alpha=0.25)
     plt.xticks(t, fontsize=10)
+    # 그래프와 토글 수평 정렬 일치
     plt.subplots_adjust(left=ALIGN_LEFT, right=ALIGN_RIGHT, top=0.88, bottom=0.22)
     return fig
 
 def render_toggle_row(seq, n, key_prefix, emoji_on="🔵", emoji_off="⚪",
                       left_pad=PAD_LEFT, right_pad=PAD_RIGHT):
+    # 왼쪽 패딩을 줄여서 그래프 눈금과 버튼을 시각적으로 정렬
     weights = [left_pad] + [1.0]*n + [right_pad]
     cols = st.columns(weights, gap="small")
     for i in range(n):
