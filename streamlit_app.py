@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
-from pandas.io.formats.style import Styler  # ★ pandas Styler 명시 import
+from pandas.io.formats.style import Styler  # pandas Styler 명시 import
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Page config + Global style
@@ -22,7 +22,6 @@ st.markdown(
     <style>
       .block-container {{max-width: 1180px;}}
 
-      /* Header (gradient) */
       .app-header {{
         background: linear-gradient(90deg, {PRIMARY} 0%, {SECONDARY} 100%);
         padding: 18px 22px; border-radius: 20px; color: white;
@@ -32,31 +31,23 @@ st.markdown(
       .app-header h1 {{margin: 0; font-size: 28px; font-weight: 800; letter-spacing:.2px}}
       .app-sub {{opacity:.9; font-size:14px; margin-top:4px}}
 
-      /* Card */
       .card {{
         background: #ffffff; border-radius: 16px; padding: 18px 18px;
         box-shadow: 0 10px 24px rgba(15,23,42,.08); border: 1px solid #eef2ff;
         margin-top: 14px;
       }}
 
-      /* Dataframe font */
       table.dataframe td, table.dataframe th {{font-size:14px}}
 
-      /* ▼ 버튼 사이 간격 시각적 축소(패딩/폰트/최소폭 ↓) */
       .stButton>button {{
         border-radius: 10px; border: 1px solid #e2e8f0;
-        padding: 4px 8px;
-        font-size: 15px;
-        min-width: 34px;
-        line-height: 1.1;
-        background: #ffffff;
-        transition: all .15s ease;
+        padding: 4px 8px; font-size: 15px; min-width: 34px; line-height: 1.1;
+        background: #ffffff; transition: all .15s ease;
       }}
       .stButton>button:hover {{transform: translateY(-1px); box-shadow:0 8px 18px rgba(2,6,23,.06)}}
 
       .stToggle label span {{font-weight:700}}
 
-      /* Sidebar title gradient */
       section[data-testid="stSidebar"] .sidebar-title {{
         background: linear-gradient(90deg, {PRIMARY}, {SECONDARY});
         -webkit-background-clip: text; -webkit-text-fill-color: transparent;
@@ -129,9 +120,6 @@ def truth_table(gate: str, a_sel=None, b_sel=None) -> Styler:
 # ─────────────────────────────────────────────────────────────────────────────
 # Gate drawing (Plotly) with LED glow
 # ─────────────────────────────────────────────────────────────────────────────
-INK = "#24272e"
-ACCENT = "#22C55E"
-
 def gate_figure(gate: str, A: int, B: int):
     line = INK
     lamp_on  = ACCENT
@@ -208,21 +196,21 @@ def gate_figure(gate: str, A: int, B: int):
 # ─────────────────────────────────────────────────────────────────────────────
 # Timeline plot + toggle row (perfect alignment)
 # ─────────────────────────────────────────────────────────────────────────────
-ALIGN_LEFT  = 0.02     # 그래프 자체 좌·우 여백 최소화
+# 그래프와 버튼의 시작/끝을 일치시키기 위해 y축 라벨/눈금 제거 + 레이블은 별도 컬럼
+ALIGN_LEFT  = 0.02     # 그래프 내부 좌측 여백(아주 작게)
 ALIGN_RIGHT = 0.98
-PAD_LEFT    = 0.0      # 버튼 좌우 패딩은 0으로 (그래프와 같은 시작점)
-PAD_RIGHT   = 0.0
+EPS = 1e-6             # st.columns 가 0을 허용하지 않으므로 아주 작은 값 사용
+PAD_LEFT  = EPS        # 버튼쪽 좌우 패딩
+PAD_RIGHT = EPS
 
-def plot_track(values, label, n, color="#3B82F6"):
+def plot_track(values, n, color="#3B82F6"):
     fig = plt.figure(figsize=(7.2, 1.15))
     t = np.arange(n)
     plt.step(t, values, where="post", linewidth=2.2, color=color)
-    # y축 라벨/눈금 제거 → 왼쪽 여백 제거
-    plt.yticks([])                    # ← y축 숫자 숨김
+    plt.yticks([])                 # y축 라벨/눈금 제거 → 왼쪽 여백 제거
     plt.ylim(-0.2, 1.2)
     plt.grid(True, linestyle="--", alpha=0.25, axis="y")
-    plt.xticks(t, fontsize=10)
-    # 그래프의 데이터 영역이 컬럼 시작점과 정확히 일치
+    plt.xticks(t, fontsize=10)     # 0~n-1 눈금
     plt.subplots_adjust(left=ALIGN_LEFT, right=ALIGN_RIGHT, top=0.88, bottom=0.22)
     return fig
 
@@ -236,7 +224,6 @@ def render_toggle_row(seq, n, key_prefix, emoji_on="🔵", emoji_off="⚪",
             if st.button(lab, key=f"{key_prefix}_{i}"):
                 seq[i] = 1 - seq[i]
     return seq
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Sidebar
@@ -309,14 +296,14 @@ else:
     if "B_seq" not in st.session_state or len(st.session_state.B_seq)!=n:
         st.session_state.B_seq = [0]*n
 
-    LABEL_COL = 0.06  # 왼쪽 A/B 레이블 폭 (원하면 0.05~0.08에서 미세조정)
+    LABEL_COL = 0.06  # 왼쪽 A/B/Y 레이블 폭 (0.05~0.08에서 취향에 맞게 조정)
 
     # A 행
     col_lab, col_body = st.columns([LABEL_COL, 1-LABEL_COL])
     with col_lab:
-        st.markdown("### A")   # 레이블을 그래프 바깥에 둠(그래프 시작점에 영향 X)
+        st.markdown("### A")
     with col_body:
-        st.pyplot(plot_track(np.array(st.session_state.A_seq), "A", n, color="#3B82F6"), use_container_width=True)
+        st.pyplot(plot_track(np.array(st.session_state.A_seq), n, color="#3B82F6"), use_container_width=True)
         st.session_state.A_seq = render_toggle_row(st.session_state.A_seq, n, "tl_A", emoji_on="🔵", emoji_off="⚪")
 
     # B 행
@@ -324,7 +311,7 @@ else:
     with col_lab:
         st.markdown("### B")
     with col_body:
-        st.pyplot(plot_track(np.array(st.session_state.B_seq), "B", n, color="#F59E0B"), use_container_width=True)
+        st.pyplot(plot_track(np.array(st.session_state.B_seq), n, color="#F59E0B"), use_container_width=True)
         st.session_state.B_seq = render_toggle_row(st.session_state.B_seq, n, "tl_B", emoji_on="🟠", emoji_off="⚪")
 
     # Y 행 (계산 결과)
@@ -336,5 +323,6 @@ else:
     with col_lab:
         st.markdown("### Y")
     with col_body:
-        st.pyplot(plot_track(Y_w, "Y", n, color="#22C55E"), use_container_width=True)
+        st.pyplot(plot_track(Y_w, n, color="#22C55E"), use_container_width=True)
+
     st.markdown('</div>', unsafe_allow_html=True)
